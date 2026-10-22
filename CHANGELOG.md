@@ -12,4 +12,7 @@ and this project adheres to
 
 - `rng` in `enzan-core`: `Seed`, `Rng` (SplitMix64, same sequence natively and in
   WebAssembly) and `WeightedTable` for seeded, integer-weighted draws.
+- `stat` in `enzan-core`: `StatKey`, `Bounds`, `StatDef`, `Modifier` and
+  `ModifierSet` for stats built from Added, Increased and More modifiers,
+  evaluated in the order they were added and clamped to bounds.
 - Workspace dependency `thiserror`.
