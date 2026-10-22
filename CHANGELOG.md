@@ -28,3 +28,10 @@ and this project adheres to
   contract and a roll does not fail.
 - Workspace dependency `thiserror`.
 - Workspace dependency `libm`.
+
+### Changed
+
+- `just check` builds and lints for `wasm32-unknown-unknown` and runs the `enzan-core`
+  tests as WebAssembly (`wasm32-wasip1`, under node 22), including a
+  `determinism` test that pins one digest per module.
+- `clippy.toml` forbids std's transcendental functions and `powi`; use `libm`.
