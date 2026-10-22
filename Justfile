@@ -8,7 +8,7 @@ default:
     @just --list
 
 # Everything a change owes before it is handed over.
-check: rust-fmt-check rust-clippy rust-test deny wasm-check wasm-test wasm-smoke lab-build
+check: rust-fmt-check rust-clippy rust-test deny wasm-check wasm-test wasm-smoke lab-build arena-build arena-test arena-smoke
 
 rust-fmt-check:
     cargo fmt --all -- --check
@@ -50,10 +50,12 @@ wasm-bindgen-check:
     fi
     echo "wasm-bindgen-check: $have ok"
 
-# Builds enzan-wasm and generates its package for the web into lab/src/pkg.
+# Builds enzan-wasm and generates its package for the web into lab/src/pkg and
+# arena/src/pkg, so the two pages do not read each other's directory.
 wasm-pkg: wasm-bindgen-check
     cargo build -p enzan-wasm --target wasm32-unknown-unknown --release
     wasm-bindgen --target web --out-dir lab/src/pkg target/wasm32-unknown-unknown/release/enzan_wasm.wasm
+    wasm-bindgen --target web --out-dir arena/src/pkg target/wasm32-unknown-unknown/release/enzan_wasm.wasm
 
 # Calls the generated package from node: the boundary the native tests cannot reach.
 wasm-smoke: wasm-pkg
@@ -75,6 +77,34 @@ lab-dev: wasm-pkg
     command -v npm >/dev/null || { echo "lab-dev: npm not found; install node 22 (it brings npm)" >&2; exit 1; }
     [ -d lab/node_modules ] || npm ci --prefix lab
     npm run dev --prefix lab
+
+# Installs the arena's packages from its lock file (network).
+arena-install: wasm-pkg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null || { echo "arena-install: npm not found; install node 22 (it brings npm)" >&2; exit 1; }
+    npm ci --prefix arena
+
+# Type-checks the arena (the page, the sim alone and the tests) and builds it.
+arena-build: arena-install
+    npm run build --prefix arena
+
+# Emits the sim and the tests with tsc and runs them under node:test.
+arena-test: arena-install
+    npm test --prefix arena
+
+# 10,000 ticks headless with the real package: the same digest twice, and the
+# same after a save and a load midway. Runs on the sim arena-test emitted.
+arena-smoke: arena-test
+    node arena/scripts/smoke.mjs
+
+# Serves the arena for a browser. Not part of `check`.
+arena-dev: wasm-pkg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null || { echo "arena-dev: npm not found; install node 22 (it brings npm)" >&2; exit 1; }
+    [ -d arena/node_modules ] || npm ci --prefix arena
+    npm run dev --prefix arena
 
 # One worktree per issue, cut from a freshly fetched origin/main.
 worktree-new type slug:

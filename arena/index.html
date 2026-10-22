@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>enzan Arena</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0 auto;
+        padding: 1rem;
+        max-width: 80rem;
+      }
+      main {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      canvas {
+        max-width: 100%;
+        height: auto;
+        background: #16181d;
+        border: 1px solid #8886;
+      }
+      aside {
+        flex: 1 1 18rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+      }
+      aside h2 {
+        margin: 0.75rem 0 0.25rem;
+        font-size: 0.95rem;
+        font-family: system-ui, sans-serif;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      #status {
+        min-height: 1.2em;
+        color: #c02020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>enzan Arena</h1>
+    <p>Move with W A S D. You attack on your own. R starts again with a new seed.</p>
+    <main>
+      <canvas id="screen" width="960" height="540"></canvas>
+      <aside>
+        <div id="status"></div>
+        <h2>Player</h2>
+        <pre id="player"></pre>
+        <h2>Equipment</h2>
+        <pre id="equipment"></pre>
+        <h2>Interface and glue (FINDING counters)</h2>
+        <pre id="findings"></pre>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
