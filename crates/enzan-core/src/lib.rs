@@ -12,5 +12,7 @@
 
 #![warn(missing_docs)]
 
+pub mod curve;
+pub mod progression;
 pub mod rng;
 pub mod stat;
