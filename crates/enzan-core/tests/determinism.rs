@@ -13,10 +13,12 @@
 
 use core::num::{NonZeroU32, NonZeroU64};
 
+use enzan_core::balance::{Trials, measure_loot};
+use enzan_core::catalog::{BaseDef, BaseId, Catalog, CatalogParts, DropTableDef, DropTableId};
 use enzan_core::curve::{Curve, Level};
 use enzan_core::loot::{
-    AffixDef, AffixGroup, AffixId, AffixKind, AffixPool, AffixSpec, CountRange, Rarity, RarityId,
-    roll_item,
+    AffixDef, AffixGroup, AffixId, AffixKind, AffixPool, AffixSpec, Chance, CountRange, DropTable,
+    Rarity, RarityId, roll_item,
 };
 use enzan_core::progression::{CapPolicy, Experience, Progress, Progression};
 use enzan_core::rng::{Rng, Seed, WeightedTable};
@@ -224,4 +226,104 @@ fn loot() {
         }
     }
     pin("loot", 0xd68b_9a7e_310a_dd61, d.0);
+}
+
+#[test]
+fn balance() {
+    let affixes = AffixPool::new(vec![
+        affix(1, AffixKind::Prefix, 1, 1, 1.0, 10.0),
+        affix(2, AffixKind::Prefix, 1, 10, 8.0, 25.5),
+        affix(3, AffixKind::Prefix, 2, 1, 0.5, 3.75),
+        affix(4, AffixKind::Prefix, 3, 20, 30.0, 60.0),
+        affix(5, AffixKind::Suffix, 4, 1, 2.0, 9.0),
+        affix(6, AffixKind::Suffix, 4, 15, 9.0, 18.0),
+        affix(7, AffixKind::Suffix, 5, 1, 0.1, 0.9),
+        affix(8, AffixKind::Suffix, 6, 25, 40.0, 41.5),
+    ])
+    .unwrap();
+    let rarity = |id: u32, min: u32, max: u32, prefixes: u32, suffixes: u32| {
+        (
+            Rarity::new(
+                RarityId::from(id),
+                CountRange::new(min, max).unwrap(),
+                prefixes,
+                suffixes,
+            ),
+            nz32(10 * (4 - id)),
+        )
+    };
+    let table = |id: u32, chance: f64, min: u32, max: u32, bases: &[u32]| {
+        DropTableDef::new(
+            DropTableId::from(id),
+            DropTable::new(
+                Chance::try_from(chance).unwrap(),
+                CountRange::new(min, max).unwrap(),
+                WeightedTable::new(
+                    bases
+                        .iter()
+                        .map(|&b| (BaseId::from(b), nz32(b + 1)))
+                        .collect(),
+                )
+                .unwrap(),
+            ),
+        )
+    };
+    let catalog = Catalog::new(CatalogParts {
+        stats: vec![
+            StatDef::new(key("life"), 100.0, Bounds::UNBOUNDED).unwrap(),
+            StatDef::new(key("other"), 0.0, Bounds::UNBOUNDED).unwrap(),
+        ],
+        bases: (1..=3)
+            .map(|id| BaseDef::new(BaseId::from(id), format!("base {id}")))
+            .collect(),
+        rarities: WeightedTable::new(vec![
+            rarity(1, 0, 0, 0, 0),
+            rarity(2, 1, 2, 1, 1),
+            rarity(3, 3, 5, 3, 3),
+        ])
+        .unwrap(),
+        affixes,
+        drop_tables: vec![
+            table(1, 0.8, 1, 3, &[1, 2, 3]),
+            table(2, 0.25, 2, 2, &[2, 3]),
+        ],
+        progression: None,
+    })
+    .unwrap();
+
+    let mut d = Digest::new();
+    for (table, level, seed) in [(1, 30, 41), (2, 12, 42)] {
+        let report = measure_loot(
+            &catalog,
+            DropTableId::from(table),
+            lvl(level),
+            Seed::from(seed),
+            Trials::try_from(2_000).unwrap(),
+        )
+        .unwrap();
+        d.u64(u64::from(report.trials()));
+        d.u64(u64::from(report.items()));
+        for (value, count) in report.drops().iter() {
+            d.u64(u64::from(value));
+            d.u64(u64::from(count));
+        }
+        for (id, count) in report.rarities() {
+            d.u64(u64::from(id.get()));
+            d.u64(u64::from(*count));
+        }
+        for (value, count) in report.affix_count().iter() {
+            d.u64(u64::from(value));
+            d.u64(u64::from(count));
+        }
+        for (id, stats) in report.affixes() {
+            d.u64(u64::from(id.get()));
+            d.u64(u64::from(stats.count()));
+            if let Some(s) = stats.value() {
+                for v in [s.min(), s.mean(), s.p50(), s.p90(), s.p99(), s.max()] {
+                    d.f64(v);
+                }
+            }
+        }
+    }
+    pin("balance", 0xf635_3cea_9433_fe8d, d.0);
 }

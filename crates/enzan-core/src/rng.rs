@@ -124,6 +124,18 @@ impl Rng {
         }
         (m >> 64) as u64
     }
+
+    /// The whole state of the generator, for a game that saves its sequence.
+    ///
+    /// `Rng::new(Seed::from(rng.state()))` gives the same continuation as
+    /// `rng`. `Rng` has no `Copy` so that a sequence is not replayed by
+    /// accident; storing the state and starting from it again is replaying on
+    /// purpose. There is no `from_state`: it would be a second way in to what
+    /// [`Rng::new`] already builds.
+    #[must_use]
+    pub fn state(&self) -> u64 {
+        self.state
+    }
 }
 
 /// Why a [`WeightedTable`] could not be built.
@@ -318,6 +330,19 @@ mod tests {
         for _ in 0..1000 {
             assert!(r.below(nz(u64::MAX)) < u64::MAX);
         }
+    }
+
+    #[test]
+    fn state_resumes_the_sequence() {
+        let mut r = Rng::stream(Seed::from(5), 3);
+        for _ in 0..7 {
+            r.next_u64();
+        }
+        let mut resumed = Rng::new(Seed::from(r.state()));
+        for _ in 0..20 {
+            assert_eq!(resumed.next_u64(), r.next_u64());
+        }
+        assert_eq!(resumed.state(), r.state());
     }
 
     #[test]
