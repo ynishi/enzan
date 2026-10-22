@@ -1,0 +1,17 @@
+[package]
+name = "enzan-wasm"
+description = "WebAssembly bindings of enzan for TypeScript: browser games and the Balance Lab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+enzan-core = { path = "../enzan-core", version = "0.1.0" }
