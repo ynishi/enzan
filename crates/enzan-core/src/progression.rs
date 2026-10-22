@@ -241,6 +241,47 @@ impl Progression {
             reached_cap: from.level < self.cap && level == self.cap,
         })
     }
+
+    /// The experience a character at level 1 with none needs to reach
+    /// `level`, or `None` when `level` is above the cap.
+    ///
+    /// It is the curve's values at levels 1 to `level - 1`, added in that
+    /// order (zero for level 1), raised when needed by the fewest steps of
+    /// `f64` for which [`Progression::gain`] from level 1 reaches `level`.
+    /// `gain` subtracts the values one by one, which can round differently
+    /// from adding them, and the amount this returns is one that `gain`
+    /// honours. The time is proportional to `level`.
+    ///
+    /// # Errors
+    ///
+    /// [`GainError::Overflow`] when the amount is not finite, and the errors
+    /// of [`Progression::gain`].
+    pub fn experience_to_reach(&self, level: Level) -> Result<Option<Experience>, GainError> {
+        if level > self.cap {
+            return Ok(None);
+        }
+        let first = Level::from(NonZeroU32::MIN);
+        let mut sum = 0.0_f64;
+        let mut at = first;
+        while at < level {
+            sum += self.curve.value(at)?;
+            if !sum.is_finite() {
+                return Err(GainError::Overflow);
+            }
+            at = at.saturating_next();
+        }
+        let start = Progress::new(first, Experience::ZERO);
+        loop {
+            let need = Experience(normalize_zero(sum));
+            if self.gain(start, need)?.progress().level() >= level {
+                return Ok(Some(need));
+            }
+            sum = sum.next_up();
+            if !sum.is_finite() {
+                return Err(GainError::Overflow);
+            }
+        }
+    }
 }
 
 /// A rise in level.

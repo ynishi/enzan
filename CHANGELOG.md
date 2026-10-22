@@ -26,6 +26,15 @@ and this project adheres to
   `roll_item`, which draws a `Rarity` and then the affixes of an `AffixPool`
   by level, kind limit and exclusive group; the order of draws is part of the
   contract and a roll does not fail.
+- `catalog` in `enzan-core`: `Catalog`, the stats, bases, rarities, affixes and
+  drop tables of a game checked as a whole (unique ids, references that
+  resolve), with `roll_drop`, `roll_item` and `evaluate_stats` against it.
+- `balance` in `enzan-core`: `measure_loot` runs seeded trials of a drop table
+  and returns a `LootReport` (counts and `Summary` percentiles, the same bits
+  natively and in WebAssembly); `measure_progression` reports what a levelling
+  rule asks for.
+- `Rng::state`, so a game can save a sequence and resume it with
+  `Rng::new(Seed::from(rng.state()))`.
 - Workspace dependency `thiserror`.
 - Workspace dependency `libm`.
 
