@@ -49,6 +49,16 @@ and this project adheres to
 - `just wasm-smoke` calls the generated `enzan-wasm` package from node, and
   `just lab-build` builds the lab; both are part of `just check`, which now
   needs `wasm-bindgen-cli` at the version in `Cargo.lock`.
+- `arena/`, a minimal game that uses the WebAssembly interface to find where it
+  is awkward: a Vite and TypeScript page with a pure, deterministic simulation
+  (`arena/src/sim`), a Canvas 2D renderer and a saved game (`just arena-dev`).
+  What the game has to compute because the core does not is in
+  `arena/src/sim/glue`, each marked `FINDING`.
+- `just arena-build`, `just arena-test` and `just arena-smoke` type-check and
+  build the arena, run its `node --test` tests, and run 10,000 headless ticks
+  with the real package (the same digest twice, and after a save and a load);
+  all three are part of `just check`. `just wasm-pkg` now writes the package to
+  `arena/src/pkg` as well as `lab/src/pkg`.
 - Workspace dependency `thiserror`.
 - Workspace dependency `libm`.
 - Workspace dependencies `wasm-bindgen`, `js-sys`, `serde`, `serde_json`,
