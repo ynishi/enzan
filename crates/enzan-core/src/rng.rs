@@ -139,7 +139,7 @@ pub enum WeightedTableError {
 
 /// Cumulative sums of `weights` (entry `i` holds the sum of `0..=i`) and their
 /// total.
-fn accumulate(
+pub(crate) fn accumulate(
     weights: impl IntoIterator<Item = NonZeroU64>,
 ) -> Result<(Vec<u64>, NonZeroU64), WeightedTableError> {
     let mut sum = 0u64;

@@ -306,6 +306,50 @@ impl Modifier {
     pub fn value(&self) -> f64 {
         self.value
     }
+
+    /// The modifier a fraction `u` of the way from `low` to `high`, with the
+    /// stat and kind of `low`.
+    ///
+    /// The value is `low + (high - low) * u`, held to `[low, high]` by two
+    /// comparisons (not `f64::max`, `min` or `clamp`, which leave the sign of a
+    /// zero unspecified).
+    ///
+    /// It builds the struct without [`Modifier::new`] because the result is
+    /// already known to satisfy the rules of `new`. Both ends satisfy them (a
+    /// value that is finite, and for More at least `-1`), and those rules are
+    /// closed over an interval: every number between two numbers that pass also
+    /// passes. When a rule that is not convex is added to `new`, this function
+    /// must be reviewed.
+    ///
+    /// The interval is `[low, high]`: `high` itself can be returned, because
+    /// `low + p` can round up to it (for example `low = 1e16`, `high = 1e16 + 2`
+    /// and `u` near 1), but nothing beyond it: `u` is at most `1 - 2^-53`, so
+    /// `fl((high - low) * u)` is at most the float just below `high - low`,
+    /// rounding being monotonic. The comparisons are a second defence. `-0.0` is not returned: `x + y` is
+    /// `-0.0` only when both are `-0.0`, and here either `low` or
+    /// `p = (high - low) * u` is `+0.0`.
+    ///
+    /// The caller guarantees what the `debug_assert`s check: the same stat and
+    /// kind, `low <= high`, a finite span, and `0 <= u < 1`.
+    pub(crate) fn between(low: &Modifier, high: &Modifier, u: f64) -> Modifier {
+        debug_assert!(low.stat == high.stat && low.kind == high.kind);
+        debug_assert!(low.value <= high.value);
+        debug_assert!((high.value - low.value).is_finite());
+        debug_assert!((0.0..1.0).contains(&u));
+        let v = low.value + (high.value - low.value) * u;
+        let value = if v < low.value {
+            low.value
+        } else if v > high.value {
+            high.value
+        } else {
+            v
+        };
+        Modifier {
+            stat: low.stat.clone(),
+            kind: low.kind,
+            value,
+        }
+    }
 }
 
 /// Why [`ModifierSet::evaluate`] gave no value.
@@ -640,5 +684,37 @@ mod tests {
         let b = Bounds::new(-inf, inf).unwrap();
         assert_eq!(b, Bounds::UNBOUNDED);
         assert_eq!((b.min(), b.max()), (-inf, inf));
+    }
+
+    #[test]
+    fn between_ends_and_inside() {
+        let top = 1.0 - f64::EPSILON / 2.0;
+        let low = m("life", Added, 10.0);
+        let high = m("life", Added, 20.0);
+        assert_eq!(Modifier::between(&low, &high, 0.0).value(), 10.0);
+        let v = Modifier::between(&low, &high, top).value();
+        assert!((10.0..=20.0).contains(&v));
+        let same = m("life", Increased, 3.5);
+        let b = Modifier::between(&same, &same, 0.7);
+        assert_eq!(b.value(), 3.5);
+        assert_eq!((b.stat(), b.kind()), (same.stat(), Increased));
+    }
+
+    #[test]
+    fn between_keeps_more_at_minus_one() {
+        let low = m("life", More, -1.0);
+        let high = m("life", More, 0.5);
+        assert_eq!(Modifier::between(&low, &high, 0.0).value(), -1.0);
+    }
+
+    #[test]
+    fn between_zero_is_positive() {
+        let low = m("life", Added, 0.0);
+        let high = m("life", Added, -0.0);
+        assert!(
+            Modifier::between(&low, &high, 0.5)
+                .value()
+                .is_sign_positive()
+        );
     }
 }
