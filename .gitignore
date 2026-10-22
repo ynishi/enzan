@@ -7,6 +7,12 @@ lab/node_modules
 lab/dist
 lab/src/pkg
 
+# The arena: the same, and the sim that `tsc` emits for its tests and smoke
+arena/node_modules
+arena/dist
+arena/build-sim
+arena/src/pkg
+
 # Local git worktrees (`just worktree-new`)
 .worktrees
 

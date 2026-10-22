@@ -64,6 +64,10 @@ in `lab/` (`wasm-smoke` and `lab-build`). That needs `wasm-bindgen-cli` at the
 version in `Cargo.lock` (`just wasm-bindgen-check` says what to install), node
 22 and npm. `lab-build` runs `npm ci`, which uses the network.
 
+The arena in `arena/` is built, tested and run headless the same way
+(`arena-build`, `arena-test` and `arena-smoke`); `arena-install` runs `npm ci`
+too.
+
 On WebAssembly a panic aborts, so a failing test stops its whole test binary
 (`--nocapture` is passed so the values show), and `#[should_panic]` tests are
 ignored. The runner is a script with a shebang; on Windows use WSL.

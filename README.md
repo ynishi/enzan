@@ -76,6 +76,12 @@ in the crate docs of `enzan-wasm` (`cargo doc`).
 The Balance Lab in [`lab/`](lab) is a page that edits the content, validates it
 with places, and runs `measureLoot` to show what drops. `just lab-dev` serves it.
 
+The Arena in [`arena/`](arena) is the smallest game that uses the interface the
+way a game does: per event, inside a fixed-step loop, with the random states,
+progress and equipment carried through a save. It exists to find where the
+interface is awkward; what the game had to compute because the core does not is
+in `arena/src/sim/glue`, each piece marked `FINDING`. `just arena-dev` serves it.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), and
