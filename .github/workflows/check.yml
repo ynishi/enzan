@@ -52,5 +52,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: just check
 

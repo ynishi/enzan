@@ -8,7 +8,7 @@ default:
     @just --list
 
 # Everything a change owes before it is handed over.
-check: rust-fmt-check rust-clippy rust-test deny
+check: rust-fmt-check rust-clippy rust-test deny wasm-check wasm-test
 
 rust-fmt-check:
     cargo fmt --all -- --check
@@ -21,6 +21,15 @@ rust-test:
 
 deny:
     cargo deny check
+
+# The browser's target still builds and lints clean, tests and examples included.
+wasm-check:
+    cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+
+# The core's tests give the same results as natively when run as WebAssembly
+# (wasm32-wasip1) under node:wasi, which .cargo/config.toml sets as the runner.
+wasm-test:
+    cargo test -p enzan-core --target wasm32-wasip1 --no-fail-fast -- --nocapture
 
 # One worktree per issue, cut from a freshly fetched origin/main.
 worktree-new type slug:
