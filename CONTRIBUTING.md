@@ -54,7 +54,14 @@ from the main checkout, and remove the worktree once the branch is merged.
 ## Verification
 
 `just check` is the definition of green, and CI is where it runs. It formats,
-lints with warnings denied, tests, and runs `cargo deny`.
+lints with warnings denied, tests, and runs `cargo deny`. It also checks that
+the WebAssembly build compiles and lints clean, and runs the `enzan-core` tests
+on `wasm32-wasip1` under node 22 (`node:wasi`), through
+`scripts/wasi-runner.mjs`.
+
+On WebAssembly a panic aborts, so a failing test stops its whole test binary
+(`--nocapture` is passed so the values show), and `#[should_panic]` tests are
+ignored. The runner is a script with a shebang; on Windows use WSL.
 
 Report what was actually run; "I did not verify X" is a usable report, a green
 claim resting on a recipe nobody ran is not.

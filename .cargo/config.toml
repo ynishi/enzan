@@ -1,0 +1,4 @@
+# The runner is a script and not `node scripts/...`: cargo runs it with the
+# crate's directory as cwd, but a program path is resolved from where `.cargo` lives.
+[target.wasm32-wasip1]
+runner = "scripts/wasi-runner.mjs"
