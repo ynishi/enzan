@@ -1,0 +1,42 @@
+{
+  "stats": [
+    { "key": "life", "base": 100, "min": 0 },
+    { "key": "damage", "base": 10, "min": 0 },
+    { "key": "crit", "base": 0.05, "min": 0, "max": 1 }
+  ],
+  "bases": [
+    { "id": 1, "name": "Short Sword" },
+    { "id": 2, "name": "Round Shield" },
+    { "id": 3, "name": "Iron Ring" }
+  ],
+  "rarities": [
+    { "id": 1, "weight": 70, "affixCount": [0, 0], "maxPrefixes": 0, "maxSuffixes": 0 },
+    { "id": 2, "weight": 25, "affixCount": [1, 2], "maxPrefixes": 1, "maxSuffixes": 1 },
+    { "id": 3, "weight": 5, "affixCount": [3, 4], "maxPrefixes": 2, "maxSuffixes": 2 }
+  ],
+  "affixes": [
+    { "id": 1, "kind": "prefix", "tier": 1, "requiredLevel": 1, "weight": 100, "group": 1,
+      "stat": "damage", "modifier": "added", "low": 1, "high": 5 },
+    { "id": 2, "kind": "prefix", "tier": 2, "requiredLevel": 10, "weight": 50, "group": 1,
+      "stat": "damage", "modifier": "added", "low": 6, "high": 12 },
+    { "id": 3, "kind": "prefix", "tier": 1, "requiredLevel": 1, "weight": 100, "group": 2,
+      "stat": "life", "modifier": "added", "low": 5, "high": 20 },
+    { "id": 4, "kind": "suffix", "tier": 1, "requiredLevel": 1, "weight": 100, "group": 3,
+      "stat": "damage", "modifier": "increased", "low": 0.05, "high": 0.1 },
+    { "id": 5, "kind": "suffix", "tier": 1, "requiredLevel": 5, "weight": 60, "group": 4,
+      "stat": "crit", "modifier": "added", "low": 0.01, "high": 0.03 },
+    { "id": 6, "kind": "suffix", "tier": 1, "requiredLevel": 3, "weight": 40, "group": 5,
+      "stat": "life", "modifier": "more", "low": 0.02, "high": 0.05 }
+  ],
+  "dropTables": [
+    { "id": 1, "chance": 0.8, "count": [1, 2],
+      "bases": [{ "base": 1, "weight": 10 }, { "base": 2, "weight": 5 }] },
+    { "id": 2, "chance": 1, "count": [1, 1],
+      "bases": [{ "base": 3, "weight": 1 }] }
+  ],
+  "progression": {
+    "curve": { "kind": "polynomial", "coefficients": [100, 50] },
+    "cap": 10,
+    "atCap": "discard"
+  }
+}
