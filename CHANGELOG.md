@@ -22,5 +22,9 @@ and this project adheres to
   `Progression::gain`, which returns a `Gain`: the new state, the
   `LeveledUp` if any, and `reached_cap`; and a `CapPolicy` of `Discard` or
   `Keep` at the cap.
+- `loot` in `enzan-core`: `DropTable` (chance, count, weighted bases) and
+  `roll_item`, which draws a `Rarity` and then the affixes of an `AffixPool`
+  by level, kind limit and exclusive group; the order of draws is part of the
+  contract and a roll does not fail.
 - Workspace dependency `thiserror`.
 - Workspace dependency `libm`.
