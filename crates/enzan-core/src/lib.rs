@@ -9,3 +9,7 @@
 //! measurements come in as arguments. Nothing it returns may depend on the
 //! platform or on iteration order the language leaves unspecified, so the same
 //! inputs give the same result natively and in WebAssembly.
+
+#![warn(missing_docs)]
+
+pub mod rng;

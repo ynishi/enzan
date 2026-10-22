@@ -11,3 +11,6 @@ repository = "https://github.com/ynishi/enzan"
 homepage = "https://github.com/ynishi/enzan"
 documentation = "https://docs.rs/enzan"
 readme = "README.md"
+
+[workspace.dependencies]
+thiserror = { version = "2", default-features = false }
