@@ -35,8 +35,24 @@ and this project adheres to
   rule asks for.
 - `Rng::state`, so a game can save a sequence and resume it with
   `Rng::new(Seed::from(rng.state()))`.
+- `enzan-wasm`: the WebAssembly interface for TypeScript (contract version 1).
+  A `Content` handle is loaded once from a spec, then `rollDrop`, `rollItem`,
+  `evaluateStats`, `gainExperience`, `measureLoot` and `measureProgression` are
+  calls on it, with `rngStream`, `rngNextF64` and `rngBelow` for the random
+  state, which the game owns as a `bigint`.
+- `enzan-wasm` types are generated from the Rust ones (tsify); an error is
+  thrown as an `EnzanError` with a closed set of `code`s and an `at`, and
+  `Content.validate` returns every one found.
+- `lab/`, the Balance Lab: a Vite and TypeScript page that edits the content,
+  validates it with places for the errors, and runs `measureLoot` to show a
+  loot report (`just lab-dev`).
+- `just wasm-smoke` calls the generated `enzan-wasm` package from node, and
+  `just lab-build` builds the lab; both are part of `just check`, which now
+  needs `wasm-bindgen-cli` at the version in `Cargo.lock`.
 - Workspace dependency `thiserror`.
 - Workspace dependency `libm`.
+- Workspace dependencies `wasm-bindgen`, `js-sys`, `serde`, `serde_json`,
+  `serde-wasm-bindgen`, `serde_path_to_error` and `tsify`.
 
 ### Changed
 

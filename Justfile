@@ -8,7 +8,7 @@ default:
     @just --list
 
 # Everything a change owes before it is handed over.
-check: rust-fmt-check rust-clippy rust-test deny wasm-check wasm-test
+check: rust-fmt-check rust-clippy rust-test deny wasm-check wasm-test wasm-smoke lab-build
 
 rust-fmt-check:
     cargo fmt --all -- --check
@@ -30,6 +30,51 @@ wasm-check:
 # (wasm32-wasip1) under node:wasi, which .cargo/config.toml sets as the runner.
 wasm-test:
     cargo test -p enzan-core --target wasm32-wasip1 --no-fail-fast -- --nocapture
+
+# The wasm-bindgen version the build uses. Cargo.lock is the one place that
+# says it; the wasm-bindgen-cli on the PATH has to be the same version.
+wasm-bindgen-version:
+    @cargo pkgid -p wasm-bindgen | sed 's/.*@//'
+
+# Refuses a wasm-bindgen-cli whose version is not the one in Cargo.lock, or
+# none, and says what to install.
+wasm-bindgen-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="$({{just_executable()}} wasm-bindgen-version)"
+    have="$(wasm-bindgen --version 2>/dev/null | awk '{print $2}' || true)"
+    if [ "$have" != "$want" ]; then
+        echo "wasm-bindgen-check: need wasm-bindgen-cli $want (the version in Cargo.lock), found ${have:-none}" >&2
+        echo "  cargo install --locked wasm-bindgen-cli --version $want" >&2
+        exit 1
+    fi
+    echo "wasm-bindgen-check: $have ok"
+
+# Builds enzan-wasm and generates its package for the web into lab/src/pkg.
+wasm-pkg: wasm-bindgen-check
+    cargo build -p enzan-wasm --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir lab/src/pkg target/wasm32-unknown-unknown/release/enzan_wasm.wasm
+
+# Calls the generated package from node: the boundary the native tests cannot reach.
+wasm-smoke: wasm-pkg
+    node lab/scripts/smoke.mjs
+
+# Installs the lab's packages from its lock file (network) and builds it: the
+# page is type-checked against the generated package.
+lab-build: wasm-pkg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null || { echo "lab-build: npm not found; install node 22 (it brings npm)" >&2; exit 1; }
+    npm ci --prefix lab
+    npm run build --prefix lab
+
+# Serves the lab for a browser. Not part of `check`.
+lab-dev: wasm-pkg
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npm >/dev/null || { echo "lab-dev: npm not found; install node 22 (it brings npm)" >&2; exit 1; }
+    [ -d lab/node_modules ] || npm ci --prefix lab
+    npm run dev --prefix lab
 
 # One worktree per issue, cut from a freshly fetched origin/main.
 worktree-new type slug:

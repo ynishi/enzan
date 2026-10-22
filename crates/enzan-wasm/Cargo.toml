@@ -15,3 +15,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 enzan-core = { path = "../enzan-core", version = "0.1.0" }
+wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+serde_path_to_error = { workspace = true }
+tsify = { workspace = true }

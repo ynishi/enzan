@@ -34,7 +34,9 @@ pub enum TrialsError {
 pub struct Trials(u32);
 
 impl Trials {
-    const MAX: u32 = 1_000_000;
+    /// The most trials a measurement runs. Front ends read the limit from
+    /// here rather than writing the number again.
+    pub const MAX: u32 = 1_000_000;
 
     /// The number of trials.
     #[must_use]
