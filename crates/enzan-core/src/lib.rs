@@ -13,3 +13,4 @@
 #![warn(missing_docs)]
 
 pub mod rng;
+pub mod stat;
