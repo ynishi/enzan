@@ -1,6 +1,12 @@
 # Rust build artifact
 target
 
+# The lab: installed packages, its build, and the generated WebAssembly package
+# (`just wasm-pkg`)
+lab/node_modules
+lab/dist
+lab/src/pkg
+
 # Local git worktrees (`just worktree-new`)
 .worktrees
 

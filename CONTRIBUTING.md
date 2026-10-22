@@ -59,6 +59,11 @@ the WebAssembly build compiles and lints clean, and runs the `enzan-core` tests
 on `wasm32-wasip1` under node 22 (`node:wasi`), through
 `scripts/wasi-runner.mjs`.
 
+It also builds the `enzan-wasm` package, calls it from node, and builds the lab
+in `lab/` (`wasm-smoke` and `lab-build`). That needs `wasm-bindgen-cli` at the
+version in `Cargo.lock` (`just wasm-bindgen-check` says what to install), node
+22 and npm. `lab-build` runs `npm ci`, which uses the network.
+
 On WebAssembly a panic aborts, so a failing test stops its whole test binary
 (`--nocapture` is passed so the values show), and `#[should_panic]` tests are
 ignored. The runner is a script with a shebang; on Windows use WSL.

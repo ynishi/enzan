@@ -55,5 +55,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Cargo.lock is the one place that says the wasm-bindgen version.
+      - id: wasm-bindgen
+        run: echo "version=$(just wasm-bindgen-version)" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
       - run: just check
 
