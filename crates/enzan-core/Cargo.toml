@@ -12,3 +12,4 @@ readme.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
+libm = { workspace = true }
