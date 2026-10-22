@@ -7,3 +7,9 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- `rng` in `enzan-core`: `Seed`, `Rng` (SplitMix64, same sequence natively and in
+  WebAssembly) and `WeightedTable` for seeded, integer-weighted draws.
+- Workspace dependency `thiserror`.

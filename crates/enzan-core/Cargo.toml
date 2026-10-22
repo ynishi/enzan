@@ -11,3 +11,4 @@ documentation.workspace = true
 readme.workspace = true
 
 [dependencies]
+thiserror = { workspace = true }
