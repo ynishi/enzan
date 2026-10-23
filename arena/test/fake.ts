@@ -26,6 +26,11 @@ const BASES: BaseInfo[] = [
 /** The range of the one affix the fake rolls (affix 1 of the content). */
 const AFFIX_RANGE = { id: 1, low: 1, high: 5 } as const;
 
+/** A refusal shaped as the package throws it: an `Error` with the `at` of the input. */
+function refusal(message: string, at: string): Error {
+  return Object.assign(new Error(message), { name: "EnzanError", at });
+}
+
 export function fakeCore(): { core: Core; calls: Calls } {
   const calls: Calls = {
     rollDrop: 0,
@@ -76,25 +81,26 @@ export function fakeCore(): { core: Core; calls: Calls } {
     checkItem: ({ item }) => {
       calls.checkItem += 1;
       if (!BASES.some((base) => base.id === item.base)) {
-        throw new Error(`there is no base ${item.base}`);
+        throw refusal(`there is no base ${item.base}`, "item.base");
       }
       if (item.rarity !== 1) {
-        throw new Error(`there is no rarity ${item.rarity}`);
+        throw refusal(`there is no rarity ${item.rarity}`, "item.rarity");
       }
       if (!Number.isInteger(item.itemLevel) || item.itemLevel < 1) {
-        throw new Error(`item level ${item.itemLevel} is below 1`);
+        throw refusal(`item level ${item.itemLevel} is below 1`, "item.itemLevel");
       }
       return {
         base: item.base,
         rarity: item.rarity,
         itemLevel: item.itemLevel,
-        affixes: item.affixes.map((affix) => {
+        affixes: item.affixes.map((affix, j) => {
           if (affix.id !== AFFIX_RANGE.id) {
-            throw new Error(`affix ${affix.id} is not in the content`);
+            throw refusal(`affix ${affix.id} is not in the content`, `item.affixes[${j}].id`);
           }
           if (!(affix.value >= AFFIX_RANGE.low && affix.value <= AFFIX_RANGE.high)) {
-            throw new Error(
+            throw refusal(
               `the value ${affix.value} of affix ${affix.id} is outside ${AFFIX_RANGE.low} to ${AFFIX_RANGE.high}`,
+              `item.affixes[${j}].value`,
             );
           }
           return { id: affix.id, stat: "damage", modifier: "added" as const, value: affix.value };

@@ -119,7 +119,7 @@ test("an item the content cannot roll is refused on load, wherever it is", () =>
   const onBody = fromSave({ ...save, equipment: { [slot]: outOfRange } }, stamp, core, tuning);
   assert.equal(onBody.ok, false);
   assert.ok(
-    !onBody.ok && onBody.reason.startsWith(`equipment.${slot}: `) && onBody.reason.includes("999"),
+    !onBody.ok && onBody.reason.startsWith(`equipment.${slot}.affixes[0].value: `) && onBody.reason.includes("999"),
     !onBody.ok ? onBody.reason : "",
   );
 
@@ -132,7 +132,9 @@ test("an item the content cannot roll is refused on load, wherever it is", () =>
   );
   assert.equal(floor.ok, false);
   assert.ok(
-    !floor.ok && floor.reason.startsWith(`floor[${save.floor.length}].item: `) && floor.reason.includes("999"),
+    !floor.ok &&
+      floor.reason.startsWith(`floor[${save.floor.length}].item.affixes[0].value: `) &&
+      floor.reason.includes("999"),
     !floor.ok ? floor.reason : "",
   );
 });

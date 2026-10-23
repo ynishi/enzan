@@ -400,8 +400,19 @@ function checked(core: Core, source: ItemInput, at: string): ItemRoll {
   try {
     return core.checkItem({ item: source });
   } catch (e) {
-    throw new Refused(`${at}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Refused(`${placeIn(at, e)}: ${e instanceof Error ? e.message : String(e)}`);
   }
+}
+
+/**
+ * Where in the save a refusal of `checkItem` points. The error's own `at` is a
+ * path in the call's arguments (`item.affixes[0].value`); its leading `item` is
+ * the item at `at` in the save. The field is read as data, so the sim needs no
+ * runtime import of the package.
+ */
+function placeIn(at: string, error: unknown): string {
+  const inner = typeof error === "object" && error !== null ? (error as { at?: unknown }).at : undefined;
+  return typeof inner === "string" && inner.startsWith("item.") ? at + inner.slice("item".length) : at;
 }
 
 /**
