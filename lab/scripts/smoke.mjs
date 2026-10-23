@@ -90,6 +90,60 @@ check("content.statKeys returns the keys in ascending order", () => {
   );
 });
 
+/** An item that dropped, with the fields `rollDrop` gives it. */
+function droppedItem() {
+  let rng = rng0;
+  for (let i = 0; i < 200; i++) {
+    const drop = content.rollDrop({ table, itemLevel: 20, rng });
+    rng = drop.rng;
+    const item = drop.items.find((it) => it.affixes.length > 0);
+    if (item) return item;
+  }
+  assert.fail("no item with affixes dropped");
+}
+
+check("checkItem on a rollDrop item returns an equal item", () => {
+  const item = droppedItem();
+  assert.equal(item.itemLevel, 20);
+  assert.deepEqual(content.checkItem({ item }), item);
+  const e = thrown(() =>
+    content.checkItem({ item: { ...item, affixes: [{ id: 9999, value: 1 }] } }),
+  );
+  assert.equal(e.code, "unknown-affix");
+  assert.equal(e.at, "item.affixes[0].id");
+});
+
+check("evaluateSheet gives the same values whatever order the sources come in", () => {
+  const item = droppedItem();
+  const weapon = { id: "weapon", from: { item } };
+  const level = {
+    id: "level",
+    from: { modifiers: [{ stat: "life", modifier: "added", value: 10 }] },
+  };
+  const stats = ["life", "damage"];
+  const one = content.evaluateSheet({ sources: [weapon, level], stats });
+  const other = content.evaluateSheet({ sources: [level, weapon], stats });
+  assert.deepEqual(one, other);
+  assert.deepEqual(
+    one.map((s) => s.stat),
+    stats,
+  );
+  const dup = thrown(() =>
+    content.evaluateSheet({ sources: [level, weapon, level], stats }),
+  );
+  assert.equal(dup.code, "duplicate-source");
+  assert.equal(dup.at, "sources[2].id");
+});
+
+check("bases() lists the bases in ascending id", () => {
+  const ids = content.bases().map((b) => b.id);
+  assert.deepEqual(
+    ids,
+    spec.bases.map((b) => b.id).sort((a, b) => a - b),
+  );
+  assert.ok(content.bases().every((b) => b.class === null));
+});
+
 check("an item level that is negative or fractional is invalid-shape", () => {
   for (const itemLevel of [-1, 1.5]) {
     const e = thrown(() => content.rollDrop({ table, itemLevel, rng: rng0 }));

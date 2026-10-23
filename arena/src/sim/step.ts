@@ -162,7 +162,7 @@ function pickUp(world: World, core: Core, tuning: Tuning): void {
       left.push(found);
       continue;
     }
-    world.equipment[slotOf(tuning, found.item.base, world.findings)] = found.item;
+    world.equipment[slotOf(world.classes, tuning, found.item.base, world.findings)] = found.item;
     refreshStats(world, core, tuning);
     player.life = Math.min(player.life, world.stats.life);
   }

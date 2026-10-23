@@ -31,7 +31,7 @@
 use core::num::NonZeroU32;
 
 use enzan_core::catalog::{
-    BaseDef, BaseId, Catalog, CatalogError, CatalogParts, DropTableDef, DropTableId,
+    BaseDef, BaseId, Catalog, CatalogError, CatalogParts, DropTableDef, DropTableId, ItemClass,
 };
 use enzan_core::curve::{Curve, Level};
 use enzan_core::loot::{
@@ -83,7 +83,7 @@ pub struct ContentSpec {
 #[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StatSpec {
-    /// 1 to 64 characters of `a-z`, `0-9` and `_`, starting with a letter.
+    /// Has the shape of a key (see the `invalid-key` code).
     pub key: String,
     /// The value before any modifier: a finite number.
     pub base: f64,
@@ -116,6 +116,12 @@ pub struct BaseSpec {
     pub id: u32,
     /// The name, for display. No rule reads it.
     pub name: String,
+    /// The game's class of the base, such as `ring` or `sword`; it has the
+    /// shape of a key (see the `invalid-key` code). No rule reads it; the game
+    /// decides what it means. `bases()` gives it back.
+    #[serde(default)]
+    #[tsify(optional)]
+    pub class: Option<String>,
 }
 
 /// A rarity: its weight, and how many affixes an item of it can get.
@@ -330,6 +336,24 @@ fn stat(i: usize, spec: &StatSpec, issues: &mut Issues) -> Option<StatDef> {
     )
 }
 
+fn base(i: usize, spec: &BaseSpec, issues: &mut Issues) -> Option<BaseDef> {
+    let class = match spec.class.as_deref().map(ItemClass::try_from) {
+        None => Some(None),
+        Some(Ok(class)) => Some(Some(class)),
+        Some(Err(error)) => {
+            issues
+                .0
+                .push(Issue::invalid_key(format!("bases[{i}].class"), &error));
+            None
+        }
+    };
+    Some(BaseDef::new(
+        BaseId::from(spec.id),
+        spec.name.clone(),
+        class?,
+    ))
+}
+
 fn rarity(i: usize, spec: &RaritySpec, issues: &mut Issues) -> Option<(Rarity, NonZeroU32)> {
     let weight = issues.weight(format!("rarities[{i}].weight"), spec.weight);
     let count = issues.built(
@@ -466,12 +490,7 @@ fn progression(spec: &ProgressionSpec, issues: &mut Issues) -> Option<Progressio
 pub(crate) fn parts(spec: &ContentSpec) -> Result<CatalogParts, Vec<Issue>> {
     let mut issues = Issues::default();
     let stats = each(&spec.stats, |i, s| stat(i, s, &mut issues));
-    let bases = Some(
-        spec.bases
-            .iter()
-            .map(|b| BaseDef::new(BaseId::from(b.id), b.name.clone()))
-            .collect::<Vec<_>>(),
-    );
+    let bases = each(&spec.bases, |i, b| base(i, b, &mut issues));
     let rarities = each(&spec.rarities, |i, r| rarity(i, r, &mut issues)).and_then(|entries| {
         match WeightedTable::new(entries) {
             Ok(table) => Some(table),

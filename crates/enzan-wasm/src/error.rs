@@ -4,7 +4,9 @@
 use core::fmt;
 
 use enzan_core::balance::{MeasureError, TrialsError};
-use enzan_core::catalog::{CatalogError, EvaluateStatsError, UnknownBase, UnknownTable};
+use enzan_core::catalog::{
+    CatalogError, EvaluateSheetError, EvaluateStatsError, ItemError, UnknownBase, UnknownTable,
+};
 use enzan_core::curve::{CurveError, CurveValueError, LevelError};
 use enzan_core::loot::{AffixDefError, AffixPoolError, ChanceError, CountRangeError};
 use enzan_core::progression::{ExperienceError, GainError, ProgressionError};
@@ -28,8 +30,8 @@ pub enum ErrorCode {
     /// The value is not the shape asked for: a missing, unknown or mistyped
     /// field, or a number that is not a whole number in range.
     InvalidShape,
-    /// A stat key is not 1 to 64 characters of `a-z`, `0-9` and `_` starting
-    /// with a letter.
+    /// A stat key does not have the shape of a key (see the `invalid-key`
+    /// code).
     InvalidStatKey,
     /// Two stats have the same key.
     DuplicateStat,
@@ -86,6 +88,23 @@ pub enum ErrorCode {
     NoProgression,
     /// A count or a sum left its range.
     Overflow,
+    /// The id of a source or the class of a base is not a key: 1 to 64
+    /// characters of `a-z`, `0-9` and `_` starting with a letter. This is the
+    /// one statement of the shape of a key for the interface.
+    /// `invalid-stat-key` is the same rule for the key of a stat and stays for
+    /// contract version 1; it is to be folded into this code at the next
+    /// contract version.
+    InvalidKey,
+    /// Two sources have the same id.
+    DuplicateSource,
+    /// An item names a rarity that is not defined.
+    UnknownRarity,
+    /// An item names an affix that is not defined.
+    UnknownAffix,
+    /// An item is not one the content can roll: an affix its rarity, its level
+    /// or the groups of its other affixes do not admit, a value outside the
+    /// range of its affix, or more affixes than its rarity allows.
+    InvalidItem,
 }
 }
 
@@ -132,6 +151,13 @@ impl Issue {
         }
     }
 
+    /// A key that is the id of a source or the class of a base and is not of
+    /// the shape of a key. It is `invalid-key` and not the code its core error
+    /// maps to, which is the one for a stat.
+    pub(crate) fn invalid_key(at: impl Into<String>, error: &enzan_core::KeyError) -> Self {
+        Self::new(ErrorCode::InvalidKey, at, error)
+    }
+
     /// An error of `enzan-core`, with the code it maps to.
     pub(crate) fn of<E: Coded + fmt::Display>(at: impl Into<String>, error: &E) -> Self {
         Self::new(error.code(), at, error)
@@ -147,6 +173,8 @@ pub(crate) trait Coded {
     fn code(&self) -> ErrorCode;
 }
 
+/// The code of a key read as the key of a stat. A source id or a class is the
+/// same rule under `invalid-key`, which the place that reads one says.
 impl Coded for StatKeyError {
     fn code(&self) -> ErrorCode {
         match self {
@@ -309,6 +337,28 @@ impl Coded for EvaluateStatsError {
         match self {
             Self::UnknownStat { .. } | Self::UnknownModifierStat { .. } => ErrorCode::UnknownStat,
             Self::Overflow { .. } => ErrorCode::Overflow,
+        }
+    }
+}
+
+impl Coded for EvaluateSheetError {
+    fn code(&self) -> ErrorCode {
+        match self {
+            Self::UnknownStat { .. } | Self::UnknownModifierStat { .. } => ErrorCode::UnknownStat,
+            Self::Overflow { .. } => ErrorCode::Overflow,
+        }
+    }
+}
+
+impl Coded for ItemError {
+    fn code(&self) -> ErrorCode {
+        match self {
+            Self::UnknownBase => ErrorCode::UnknownBase,
+            Self::UnknownRarity => ErrorCode::UnknownRarity,
+            Self::UnknownAffix { .. } => ErrorCode::UnknownAffix,
+            Self::NotAdmitted { .. } | Self::OutOfRange { .. } | Self::TooManyAffixes => {
+                ErrorCode::InvalidItem
+            }
         }
     }
 }

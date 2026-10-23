@@ -23,7 +23,6 @@ const readJson = (name) => JSON.parse(readFileSync(new URL(name, root), "utf8"))
 const spec = readJson("content.json");
 const tuning = readJson("tuning.json");
 assert.deepEqual(pkg.Content.validate(spec), []);
-assert.deepEqual(pkg.modifierKinds(), ["added", "increased", "more"]);
 
 const content = pkg.Content.load(spec);
 assert.deepEqual(content.statKeys(), spec.stats.map((s) => s.key).sort());

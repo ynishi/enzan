@@ -274,7 +274,7 @@ fn balance() {
             StatDef::new(key("other"), 0.0, Bounds::UNBOUNDED).unwrap(),
         ],
         bases: (1..=3)
-            .map(|id| BaseDef::new(BaseId::from(id), format!("base {id}")))
+            .map(|id| BaseDef::new(BaseId::from(id), format!("base {id}"), None))
             .collect(),
         rarities: WeightedTable::new(vec![
             rarity(1, 0, 0, 0, 0),

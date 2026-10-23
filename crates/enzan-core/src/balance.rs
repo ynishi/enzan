@@ -459,8 +459,8 @@ mod tests {
         Catalog::new(CatalogParts {
             stats: vec![StatDef::new(key("life"), 0.0, crate::stat::Bounds::UNBOUNDED).unwrap()],
             bases: vec![
-                BaseDef::new(BaseId::from(1), "sword".to_string()),
-                BaseDef::new(BaseId::from(2), "axe".to_string()),
+                BaseDef::new(BaseId::from(1), "sword".to_string(), None),
+                BaseDef::new(BaseId::from(2), "axe".to_string(), None),
             ],
             rarities: WeightedTable::new(rarities).unwrap(),
             affixes: AffixPool::new(affixes).unwrap(),

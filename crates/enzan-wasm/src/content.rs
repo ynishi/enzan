@@ -13,9 +13,9 @@ use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
 
 use crate::dto::{
-    EvaluateStatsArgs, GainExperienceArgs, GainResult, LootReport, MeasureLootArgs,
-    MeasureProgressionArgs, ProgressionReport, RollDropArgs, RollDropResult, RollItemArgs,
-    RollItemResult, StatValue,
+    self, BaseInfo, CheckItemArgs, EvaluateSheetArgs, EvaluateStatsArgs, GainExperienceArgs,
+    GainResult, ItemRoll, LootReport, MeasureLootArgs, MeasureProgressionArgs, ProgressionReport,
+    RollDropArgs, RollDropResult, RollItemArgs, RollItemResult, StatValue,
 };
 use crate::error::{ErrorCode, Issue, internal_error, to_js_error};
 use crate::spec::{self, ContentSpec};
@@ -130,6 +130,35 @@ impl Content {
             .iter()
             .map(out)
             .collect()
+    }
+
+    /// The values of stats under sources of modifiers, in the order of `stats`.
+    /// The sources count in ascending order of id, whatever order they are
+    /// given in.
+    #[wasm_bindgen(js_name = evaluateSheet)]
+    pub fn evaluate_sheet(
+        &self,
+        args: Ts<EvaluateSheetArgs>,
+    ) -> Result<Vec<Ts<StatValue>>, JsValue> {
+        read(&args)?
+            .run(&self.catalog)
+            .map_err(thrown)?
+            .iter()
+            .map(out)
+            .collect()
+    }
+
+    /// An item checked against the content, such as one read back from a save:
+    /// the item in its canonical form if the content can roll it, and an
+    /// `EnzanError` if not.
+    #[wasm_bindgen(js_name = checkItem)]
+    pub fn check_item(&self, args: Ts<CheckItemArgs>) -> Result<Ts<ItemRoll>, JsValue> {
+        out(&read(&args)?.run(&self.catalog).map_err(thrown)?)
+    }
+
+    /// The bases defined in the content, in ascending order of id.
+    pub fn bases(&self) -> Result<Vec<Ts<BaseInfo>>, JsValue> {
+        dto::bases(&self.catalog).iter().map(out).collect()
     }
 
     /// Adds experience to a character's progress.

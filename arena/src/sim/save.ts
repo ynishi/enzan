@@ -2,20 +2,35 @@
 //
 // What crosses a save is JSON: the random states and the seed, which are
 // bigints in the world, are decimal strings in the save (contract 2 of
-// `enzan-wasm`). What can be derived is not saved: `load` asks the core for the
-// stats again. The mapping is written field by field and the compiler checks it
-// names every field of `World` except the two that are left out.
+// `enzan-wasm`). An item is saved as the package's `ItemInput`: the base, the
+// rarity, the item level, and each affix as its id and value. What can be
+// derived is not saved: the stat and the kind of each affix, the classes of the
+// bases and the player's stats. `load` has every item checked against the
+// content, which gives the full item back, and asks the core for the classes
+// and the stats again. The mapping is written field by field and the compiler
+// checks it names every field of `World` except the three that are left out.
 
-import { type Core, isModifierKind, type ItemRoll, type Progress } from "./core.ts";
+import { type Core, type ItemInput, type ItemRoll, type Progress } from "./core.ts";
 import { meter, newFindings } from "./findings.ts";
-import { playerStats, SLOTS, slotOf } from "./glue/equip.ts";
+import { type BaseClasses, baseClasses, playerStats, SLOTS, type Slot, slotOf } from "./glue/equip.ts";
 import type { Enemy, Equipment, FloorItem, Player, Tuning, World } from "./world.ts";
 
 /** The fields of a world that are not saved. */
-type Derived = "stats" | "findings";
+type Derived = "classes" | "stats" | "findings";
+
+/** The worn items as they are saved. */
+export type SavedEquipment = { [S in Slot]?: ItemInput };
+
+/** An item on the floor as it is saved. */
+export interface SavedFloorItem {
+  id: number;
+  x: number;
+  y: number;
+  item: ItemInput;
+}
 
 export interface Save {
-  format: 1;
+  format: 2;
   /** `contentHash` of the content and tuning the world was made with. */
   contentHash: string;
   /** The contract version of the interface the world was run on. */
@@ -24,9 +39,9 @@ export interface Save {
   seed: string;
   rng: { drops: string; spawns: string; crits: string };
   player: Player;
-  equipment: Equipment;
+  equipment: SavedEquipment;
   enemies: Enemy[];
-  floor: FloorItem[];
+  floor: SavedFloorItem[];
   director: { wave: number; spawnCooldown: number };
   nextId: number;
   over: boolean;
@@ -129,22 +144,18 @@ export function stampOf(content: unknown, tuning: unknown, contractVersion: numb
 
 // ---- world to save ---------------------------------------------------------
 
-function itemOut(source: ItemRoll): ItemRoll {
+function itemOut(source: ItemRoll): ItemInput {
   return {
     base: source.base,
     rarity: source.rarity,
-    affixes: source.affixes.map((affix) => ({
-      id: affix.id,
-      stat: affix.stat,
-      modifier: affix.modifier,
-      value: affix.value,
-    })),
+    itemLevel: source.itemLevel,
+    affixes: source.affixes.map((affix) => ({ id: affix.id, value: affix.value })),
   };
 }
 
 /** The world as a save; nothing in it is shared with the world. */
 export function toSave(world: World, stamp: Stamp): Save {
-  const worn: Equipment = {};
+  const worn: SavedEquipment = {};
   for (const slot of SLOTS) {
     const wornItem = world.equipment[slot];
     if (wornItem !== undefined) {
@@ -192,7 +203,7 @@ export function toSave(world: World, stamp: Stamp): Save {
     over: world.over,
   } satisfies { [K in Exclude<keyof World, Derived>]: unknown };
   return {
-    format: 1,
+    format: 2,
     contentHash: stamp.contentHash,
     contractVersion: stamp.contractVersion,
     ...fields,
@@ -285,21 +296,20 @@ function state(value: unknown, at: string): bigint {
   return parsed;
 }
 
-function item(value: unknown, at: string): ItemRoll {
+function item(value: unknown, at: string): ItemInput {
   const source = record(value, at);
+  const itemLevel = whole(source.itemLevel, `${at}.itemLevel`);
+  if (itemLevel < 1) {
+    refuse(`${at}.itemLevel`, "at least 1");
+  }
   return {
     base: whole(source.base, `${at}.base`),
     rarity: whole(source.rarity, `${at}.rarity`),
+    itemLevel,
     affixes: list(source.affixes, `${at}.affixes`).map((entry, i) => {
       const affix = record(entry, `${at}.affixes[${i}]`);
-      const modifier = text(affix.modifier, `${at}.affixes[${i}].modifier`);
-      if (!isModifierKind(modifier)) {
-        refuse(`${at}.affixes[${i}].modifier`, "a modifier");
-      }
       return {
         id: whole(affix.id, `${at}.affixes[${i}].id`),
-        stat: text(affix.stat, `${at}.affixes[${i}].stat`),
-        modifier,
         value: number(affix.value, `${at}.affixes[${i}].value`),
       };
     }),
@@ -315,9 +325,9 @@ function progress(value: unknown, at: string): Progress {
   };
 }
 
-function equipment(value: unknown, at: string): Equipment {
+function equipment(value: unknown, at: string): SavedEquipment {
   const source = record(value, at);
-  const worn: Equipment = {};
+  const worn: SavedEquipment = {};
   for (const key of Object.keys(source)) {
     const slot = SLOTS.find((candidate) => candidate === key);
     if (slot === undefined) {
@@ -335,13 +345,17 @@ function equipment(value: unknown, at: string): Equipment {
  * (the order `step` breaks ties by).
  */
 function fitsTuning(
-  loaded: Pick<World, "enemies" | "floor" | "equipment" | "director" | "nextId">,
+  loaded: Pick<World, "enemies" | "director" | "nextId"> & {
+    floor: SavedFloorItem[];
+    equipment: SavedEquipment;
+  },
+  classes: BaseClasses,
   tuning: Tuning,
 ): void {
   const scratch = newFindings();
   const slotAt = (base: number, at: string) => {
     try {
-      return slotOf(tuning, base, scratch);
+      return slotOf(classes, tuning, base, scratch);
     } catch {
       return refuse(at, "a base with a slot");
     }
@@ -378,16 +392,36 @@ function fitsTuning(
 }
 
 /**
+ * The item as the content has it, or a refusal that names where and says why
+ * the content cannot roll it. The shape was read by `item`; the content's own
+ * ranges and rarities are the core's to check.
+ */
+function checked(core: Core, source: ItemInput, at: string): ItemRoll {
+  try {
+    return core.checkItem({ item: source });
+  } catch (e) {
+    throw new Refused(`${at}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/**
  * A world from a parsed save. A wrong format, a stamp that is not `stamp` (the
- * content, the tuning or the interface's contract changed) or a shape that does
- * not fit is `{ ok: false }` with the reason. The stats are asked of the core
- * again.
+ * content, the tuning or the interface's contract changed), a shape that does
+ * not fit or an item the content cannot roll is `{ ok: false }` with the
+ * reason. The classes of the bases and the stats are asked of the core again.
  */
 export function fromSave(value: unknown, stamp: Stamp, core: Core, tuning: Tuning): Loaded {
   try {
     const source = record(value, "save");
-    if (source.format !== 1) {
-      return { ok: false, reason: `save format ${String(source.format)} is not 1` };
+    if (source.format === 1) {
+      return {
+        ok: false,
+        reason:
+          "save format 1 is refused: its items have no item level, and there is no ground to choose one after the fact",
+      };
+    }
+    if (source.format !== 2) {
+      return { ok: false, reason: `save format ${String(source.format)} is not 2` };
     }
     if (source.contractVersion !== stamp.contractVersion) {
       return {
@@ -428,7 +462,7 @@ export function fromSave(value: unknown, stamp: Stamp, core: Core, tuning: Tunin
           contactCooldown: whole(enemy.contactCooldown, `enemies[${i}].contactCooldown`),
         };
       }),
-      floor: list(source.floor, "floor").map((entry, i): FloorItem => {
+      floor: list(source.floor, "floor").map((entry, i): SavedFloorItem => {
         const found = record(entry, `floor[${i}]`);
         return {
           id: whole(found.id, `floor[${i}].id`),
@@ -447,16 +481,29 @@ export function fromSave(value: unknown, stamp: Stamp, core: Core, tuning: Tunin
     if (loaded.player.progress.level < 1) {
       refuse("player.progress.level", "at least 1");
     }
-    fitsTuning(loaded, tuning);
     const findings = newFindings();
-    const stats = playerStats(
-      meter(core, findings),
-      tuning,
-      loaded.player.progress.level,
-      loaded.equipment,
-      findings,
+    const counted = meter(core, findings);
+    const classes = baseClasses(counted);
+    fitsTuning(loaded, classes, tuning);
+    // The items are the content's canonical ones from here on.
+    const worn: Equipment = {};
+    for (const slot of SLOTS) {
+      const saved = loaded.equipment[slot];
+      if (saved !== undefined) {
+        worn[slot] = checked(counted, saved, `equipment.${slot}`);
+      }
+    }
+    const floor = loaded.floor.map(
+      (found, i): FloorItem => ({
+        ...found,
+        item: checked(counted, found.item, `floor[${i}].item`),
+      }),
     );
-    return { ok: true, world: { ...loaded, stats, findings } };
+    const stats = playerStats(counted, tuning, loaded.player.progress.level, worn, findings);
+    return {
+      ok: true,
+      world: { ...loaded, equipment: worn, floor, classes, stats, findings },
+    };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) };
   }
