@@ -26,7 +26,10 @@ use tsify::Tsify;
 use crate::CONTRACT_VERSION;
 use crate::error::{ErrorCode, Issue};
 
+closed_set! {
 /// How a modifier combines into a stat.
+///
+/// The variants are declared in the order they combine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 pub enum ModifierKind {
@@ -36,6 +39,7 @@ pub enum ModifierKind {
     Increased,
     /// A multiplier, as a fraction, applied on its own.
     More,
+}
 }
 
 impl From<ModifierKind> for stat::ModifierKind {

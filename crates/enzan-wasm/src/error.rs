@@ -14,6 +14,7 @@ use serde::Serialize;
 use tsify::Tsify;
 use wasm_bindgen::JsValue;
 
+closed_set! {
 /// Why a call or a content spec was refused: a closed set, the same for every
 /// method.
 ///
@@ -86,17 +87,23 @@ pub enum ErrorCode {
     /// A count or a sum left its range.
     Overflow,
 }
+}
+
+/// The name of a unit variant as JavaScript sees it. It is taken from the serde
+/// form, which the generated type is also made from, so the names are written
+/// once: by `rename_all` on the enum.
+pub(crate) fn serde_name<T: Serialize>(value: &T) -> String {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(name)) => name,
+        _ => unreachable!("a unit variant of a rename_all enum serializes to a string"),
+    }
+}
 
 impl ErrorCode {
-    /// The code as JavaScript sees it (kebab-case). It is taken from the serde
-    /// form, which the generated type is also made from, so the names are
-    /// written once: by `rename_all` on this enum.
+    /// The code as JavaScript sees it (kebab-case).
     #[must_use]
     pub fn name(self) -> String {
-        match serde_json::to_value(self) {
-            Ok(serde_json::Value::String(name)) => name,
-            _ => unreachable!("a unit variant of a rename_all enum serializes to a string"),
-        }
+        serde_name(&self)
     }
 }
 
@@ -361,4 +368,10 @@ export interface EnzanError extends Error {
 
 /** Whether `e` is an `EnzanError`, as thrown by a method of this package. */
 export function isEnzanError(e: unknown): e is EnzanError;
+
+/** The kinds of modifier, in the order they combine. */
+export function modifierKinds(): ModifierKind[];
+
+/** Every error code the package throws or returns, in ascending order. */
+export function errorCodes(): ErrorCode[];
 "#;

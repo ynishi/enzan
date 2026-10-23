@@ -17,7 +17,7 @@ use crate::dto::{
     ModifierInput, ModifierKind, Progress, RngBelowArgs, RngNextF64Args, RngStreamArgs,
     RollDropArgs, RollItemArgs,
 };
-use crate::error::{Coded, ErrorCode, Issue, weighted_table_code};
+use crate::error::{Coded, ErrorCode, Issue, serde_name, weighted_table_code};
 use crate::spec::{self, ContentSpec};
 
 fn fixture() -> Value {
@@ -1091,4 +1091,38 @@ fn a_draw_returns_the_value_and_the_next_state() {
         RngBelowArgs { rng: 1, n: 1 }.run().expect("a draw").value,
         0
     );
+}
+
+#[test]
+fn modifier_kinds_closed_set() {
+    let names: Vec<String> = ModifierKind::ALL.iter().map(serde_name).collect();
+    assert_eq!(names, ["added", "increased", "more"]);
+}
+
+#[test]
+fn error_codes_closed_set() {
+    let mut names = std::collections::BTreeSet::new();
+    for code in ErrorCode::ALL {
+        let name = code.name();
+        assert_eq!(
+            serde_json::to_value(code).expect("a code serializes"),
+            Value::String(name.clone())
+        );
+        assert!(names.insert(name.clone()), "duplicate code name: {name}");
+    }
+}
+
+#[test]
+fn error_codes_list_is_sorted_and_unique() {
+    // `errorCodes()` returns JsValue, which cannot be made natively, so the
+    // rule it applies is checked on the names it is made from.
+    let mut names: Vec<String> = ErrorCode::ALL.iter().map(|c| c.name()).collect();
+    names.sort();
+    assert!(names.windows(2).all(|w| w[0] < w[1]));
+}
+
+#[test]
+fn stat_keys_from_content() {
+    let content = crate::Content { catalog: catalog() };
+    assert_eq!(content.stat_keys(), vec!["crit", "damage", "life"]);
 }

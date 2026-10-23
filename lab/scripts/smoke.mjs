@@ -16,7 +16,15 @@ const fixture = new URL(
 );
 
 pkg.initSync({ module: readFileSync(new URL("enzan_wasm_bg.wasm", pkgDir)) });
-const { Content, contractVersion, isEnzanError, rngStream, rngNextF64 } = pkg;
+const {
+  Content,
+  contractVersion,
+  errorCodes,
+  isEnzanError,
+  modifierKinds,
+  rngStream,
+  rngNextF64,
+} = pkg;
 
 const spec = JSON.parse(readFileSync(fixture, "utf8"));
 const table = spec.dropTables[0].id;
@@ -43,6 +51,17 @@ check("contractVersion is 1", () => {
   assert.equal(contractVersion(), 1);
 });
 
+check("modifierKinds returns the closed set in order", () => {
+  assert.deepEqual(modifierKinds(), ["added", "increased", "more"]);
+});
+
+check("errorCodes returns the closed set in ascending order", () => {
+  const codes = errorCodes();
+  assert.deepEqual(codes, [...new Set(codes)].sort());
+  assert.ok(codes.includes("invalid-shape"));
+  assert.ok(codes.includes("overflow"));
+});
+
 check("the sample content has no issues", () => {
   assert.deepEqual(Content.validate(spec), []);
 });
@@ -63,6 +82,13 @@ check("a misspelled field is invalid-shape, at its place", () => {
 
 const content = Content.load(spec);
 const rng0 = rngStream({ seed: 2n ** 60n + 7n, stream: 1n });
+
+check("content.statKeys returns the keys in ascending order", () => {
+  assert.deepEqual(
+    content.statKeys(),
+    spec.stats.map((s) => s.key).sort(),
+  );
+});
 
 check("an item level that is negative or fractional is invalid-shape", () => {
   for (const itemLevel of [-1, 1.5]) {

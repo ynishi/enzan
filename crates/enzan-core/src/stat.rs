@@ -45,6 +45,12 @@ pub struct StatKey(String);
 impl StatKey {
     const MAX_LEN: usize = 64;
 
+    /// The key as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     fn validate(s: &str) -> Result<(), StatKeyError> {
         let bytes = s.as_bytes();
         if bytes.is_empty() {
