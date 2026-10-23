@@ -5,9 +5,9 @@
     { "key": "crit", "base": 0.05, "min": 0, "max": 1 }
   ],
   "bases": [
-    { "id": 1, "name": "Short Sword" },
-    { "id": 2, "name": "Round Shield" },
-    { "id": 3, "name": "Iron Ring" }
+    { "id": 1, "name": "Short Sword", "class": "sword" },
+    { "id": 2, "name": "Round Shield", "class": "shield" },
+    { "id": 3, "name": "Iron Ring", "class": "ring" }
   ],
   "rarities": [
     { "id": 1, "weight": 60, "affixCount": [0, 0], "maxPrefixes": 0, "maxSuffixes": 0 },

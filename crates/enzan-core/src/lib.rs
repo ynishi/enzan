@@ -22,7 +22,11 @@
 pub mod balance;
 pub mod catalog;
 pub mod curve;
+mod key;
 pub mod loot;
 pub mod progression;
 pub mod rng;
+pub mod sheet;
 pub mod stat;
+
+pub use key::KeyError;

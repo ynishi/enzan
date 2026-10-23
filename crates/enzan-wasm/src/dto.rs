@@ -14,11 +14,14 @@
 use core::num::NonZeroU64;
 
 use enzan_core::balance::{self, Trials};
-use enzan_core::catalog::{BaseId, Catalog, DropTableId, EvaluateStatsError};
+use enzan_core::catalog::{
+    BaseId, Catalog, DropTableId, EvaluateSheetError, EvaluateStatsError, ItemError,
+};
 use enzan_core::curve::Level;
 use enzan_core::loot;
 use enzan_core::progression::{self, Experience, GainError};
 use enzan_core::rng::{Rng, Seed};
+use enzan_core::sheet::{Sheet, SourceId};
 use enzan_core::stat::{self, Modifier, ModifierSet, StatKey};
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
@@ -187,13 +190,16 @@ pub struct RolledAffix {
     pub value: f64,
 }
 
-/// An item that dropped.
+/// An item: as it dropped, and as `checkItem` gives it back.
 #[derive(Clone, Debug, PartialEq, Serialize, Tsify)]
+#[serde(rename_all = "camelCase")]
 pub struct ItemRoll {
     /// The id of the base.
     pub base: u32,
     /// The id of the rarity.
     pub rarity: u32,
+    /// The level it was rolled at, so the item can be checked again.
+    pub item_level: u32,
     /// The affixes, in the order they were rolled.
     pub affixes: Vec<RolledAffix>,
 }
@@ -203,6 +209,7 @@ impl ItemRoll {
         Self {
             base: item.base().get(),
             rarity: item.rarity().get(),
+            item_level: item.item_level().get(),
             affixes: item
                 .affixes()
                 .iter()
@@ -298,6 +305,118 @@ impl RollItemArgs {
     }
 }
 
+/// An affix of an item to check: which one, and the value it has.
+///
+/// The stat and the kind are the affix's in the content, so they are not given.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+pub struct AffixInput {
+    /// The id of the affix in the content.
+    pub id: u32,
+    /// The value, within the range of the affix.
+    pub value: f64,
+}
+
+/// An item to check against the content, such as one read back from a save.
+///
+/// It is the input form of [`ItemRoll`]. It reads only the fields below and
+/// skips the others (rule 9 of the contract), so an item that `rollDrop` gave
+/// can be passed as it is.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemInput {
+    /// The id of the base.
+    pub base: u32,
+    /// The id of the rarity.
+    pub rarity: u32,
+    /// The level the item was rolled at, at least 1.
+    pub item_level: u32,
+    /// The affixes, in the order they were rolled.
+    pub affixes: Vec<AffixInput>,
+}
+
+impl ItemInput {
+    /// The item as the core holds it, if the content can roll it.
+    ///
+    /// `prefix` is the `at` of the item in the input: `item` for `checkItem`,
+    /// `sources[i].from.item` for a source of `evaluateSheet`. The same refusal
+    /// is at the same path under either prefix, and a refusal of the shape of
+    /// the item (which the reader finds) is under it too.
+    pub(crate) fn check(
+        &self,
+        catalog: &Catalog,
+        prefix: &str,
+    ) -> Result<loot::ItemRoll<BaseId>, Issue> {
+        let item_level = level(&format!("{prefix}.itemLevel"), self.item_level)?;
+        let affixes: Vec<(loot::AffixId, f64)> = self
+            .affixes
+            .iter()
+            .map(|a| (loot::AffixId::from(a.id), a.value))
+            .collect();
+        catalog
+            .check_item(
+                BaseId::from(self.base),
+                loot::RarityId::from(self.rarity),
+                item_level,
+                &affixes,
+            )
+            .map_err(|e| {
+                let at = match e {
+                    ItemError::UnknownBase => format!("{prefix}.base"),
+                    ItemError::UnknownRarity => format!("{prefix}.rarity"),
+                    ItemError::TooManyAffixes => format!("{prefix}.affixes"),
+                    ItemError::UnknownAffix { index } => format!("{prefix}.affixes[{index}].id"),
+                    ItemError::NotAdmitted { index } => format!("{prefix}.affixes[{index}]"),
+                    ItemError::OutOfRange { index } => format!("{prefix}.affixes[{index}].value"),
+                };
+                Issue::of(at, &e)
+            })
+    }
+}
+
+/// The arguments of `checkItem`.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckItemArgs {
+    /// The item to check.
+    pub item: ItemInput,
+}
+
+impl CheckItemArgs {
+    /// The item in its canonical form, if the content can roll it.
+    pub(crate) fn run(&self, catalog: &Catalog) -> Result<ItemRoll, Issue> {
+        self.item
+            .check(catalog, "item")
+            .map(|item| ItemRoll::from_core(&item))
+    }
+}
+
+/// A kind of item the content defines.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Tsify)]
+#[tsify(missing_as_null)]
+pub struct BaseInfo {
+    /// The id of the base.
+    pub id: u32,
+    /// The name, for display.
+    pub name: String,
+    /// The class the game gave it, or null when it has none.
+    pub class: Option<String>,
+}
+
+/// The bases of the content, in ascending order of id.
+pub(crate) fn bases(catalog: &Catalog) -> Vec<BaseInfo> {
+    let mut bases: Vec<BaseInfo> = catalog
+        .bases()
+        .iter()
+        .map(|b| BaseInfo {
+            id: b.id().get(),
+            name: b.name().to_owned(),
+            class: b.class().map(|c| c.as_str().to_owned()),
+        })
+        .collect();
+    bases.sort_by_key(|b| b.id);
+    bases
+}
+
 // ---- stats ----------------------------------------------------------------
 
 /// A modifier to count into a stat.
@@ -334,32 +453,46 @@ pub struct StatValue {
 impl EvaluateStatsArgs {
     /// The value of each stat asked for, in the order asked.
     pub(crate) fn run(&self, catalog: &Catalog) -> Result<Vec<StatValue>, Issue> {
-        let mut modifiers = ModifierSet::new();
-        for (i, input) in self.modifiers.iter().enumerate() {
-            let key = stat_key(&format!("modifiers[{i}].stat"), &input.stat)?;
-            let modifier = Modifier::new(key, input.modifier.into(), input.value)
-                .map_err(|e| Issue::of(format!("modifiers[{i}].value"), &e))?;
-            modifiers.push(modifier);
-        }
-        let keys = self
-            .stats
-            .iter()
-            .enumerate()
-            .map(|(i, key)| stat_key(&format!("stats[{i}]"), key))
-            .collect::<Result<Vec<_>, _>>()?;
+        let modifiers = modifier_set("modifiers", &self.modifiers)?;
+        let keys = stat_keys(&self.stats)?;
         let values = catalog
             .evaluate_stats(&modifiers, &keys)
             .map_err(|e| Issue::of(evaluate_at(&e), &e))?;
-        Ok(self
-            .stats
-            .iter()
-            .zip(values)
-            .map(|(stat, value)| StatValue {
-                stat: stat.clone(),
-                value,
-            })
-            .collect())
+        Ok(stat_values(&self.stats, values))
     }
+}
+
+/// The modifiers in `inputs`, in order; `at` is the path of the list.
+fn modifier_set(at: &str, inputs: &[ModifierInput]) -> Result<ModifierSet, Issue> {
+    let mut modifiers = ModifierSet::new();
+    for (i, input) in inputs.iter().enumerate() {
+        let key = stat_key(&format!("{at}[{i}].stat"), &input.stat)?;
+        let modifier = Modifier::new(key, input.modifier.into(), input.value)
+            .map_err(|e| Issue::of(format!("{at}[{i}].value"), &e))?;
+        modifiers.push(modifier);
+    }
+    Ok(modifiers)
+}
+
+/// The keys of the stats asked for.
+fn stat_keys(stats: &[String]) -> Result<Vec<StatKey>, Issue> {
+    stats
+        .iter()
+        .enumerate()
+        .map(|(i, key)| stat_key(&format!("stats[{i}]"), key))
+        .collect()
+}
+
+/// The values under the keys they were asked by.
+fn stat_values(stats: &[String], values: Vec<f64>) -> Vec<StatValue> {
+    stats
+        .iter()
+        .zip(values)
+        .map(|(stat, value)| StatValue {
+            stat: stat.clone(),
+            value,
+        })
+        .collect()
 }
 
 fn evaluate_at(error: &EvaluateStatsError) -> String {
@@ -368,6 +501,103 @@ fn evaluate_at(error: &EvaluateStatsError) -> String {
         | EvaluateStatsError::Overflow { key_index } => format!("stats[{key_index}]"),
         EvaluateStatsError::UnknownModifierStat { modifier_index } => {
             format!("modifiers[{modifier_index}].stat")
+        }
+    }
+}
+
+/// Where a modifier comes from: a list of modifiers, or an item.
+///
+/// It is an externally tagged enum, so JavaScript writes
+/// `{ modifiers: [...] }` or `{ item: {...} }`. One source is one kind, so no
+/// rule is needed for how a list and an item are ordered inside a source.
+///
+/// The object holds that one key and nothing else: a second key, known or not,
+/// is `invalid-shape`. This is the one place the arguments of a call do not
+/// skip a field they do not know (rule 9), because the key is the kind.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceFrom {
+    /// Modifiers, counted in this order.
+    Modifiers(Vec<ModifierInput>),
+    /// An item, whose affixes count in the order they were rolled. It is
+    /// checked as `checkItem` checks it.
+    Item(ItemInput),
+}
+
+/// A source of modifiers under the name the game gives it.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+pub struct SourceInput {
+    /// Has the shape of a key (see the `invalid-key` code). An id is used
+    /// once.
+    pub id: String,
+    /// What the modifiers are.
+    pub from: SourceFrom,
+}
+
+/// The arguments of `evaluateSheet`.
+#[derive(Clone, Debug, PartialEq, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluateSheetArgs {
+    /// The sources. The order given does not matter: they count in ascending
+    /// order of id.
+    pub sources: Vec<SourceInput>,
+    /// The keys of the stats to evaluate.
+    pub stats: Vec<String>,
+}
+
+impl EvaluateSheetArgs {
+    /// The value of each stat asked for under all the sources, in the order
+    /// asked.
+    pub(crate) fn run(&self, catalog: &Catalog) -> Result<Vec<StatValue>, Issue> {
+        let mut sheet = Sheet::new();
+        for (i, source) in self.sources.iter().enumerate() {
+            let id_at = format!("sources[{i}].id");
+            let id = SourceId::try_from(source.id.as_str())
+                .map_err(|e| Issue::invalid_key(id_at.as_str(), &e))?;
+            if sheet.get(&id).is_some() {
+                return Err(Issue::new(
+                    ErrorCode::DuplicateSource,
+                    id_at,
+                    format_args!("the source {} is given twice", source.id),
+                ));
+            }
+            let set = match &source.from {
+                SourceFrom::Modifiers(list) => {
+                    modifier_set(&format!("sources[{i}].from.modifiers"), list)?
+                }
+                SourceFrom::Item(item) => item
+                    .check(catalog, &format!("sources[{i}].from.item"))?
+                    .modifiers(),
+            };
+            sheet.set(id, set);
+        }
+        let keys = stat_keys(&self.stats)?;
+        let values = catalog
+            .evaluate_sheet(&sheet, &keys)
+            .map_err(|e| Issue::of(self.sheet_at(&e), &e))?;
+        Ok(stat_values(&self.stats, values))
+    }
+
+    /// Where in the arguments an error of the evaluation is.
+    fn sheet_at(&self, error: &EvaluateSheetError) -> String {
+        match error {
+            EvaluateSheetError::UnknownStat { key_index }
+            | EvaluateSheetError::Overflow { key_index } => format!("stats[{key_index}]"),
+            EvaluateSheetError::UnknownModifierStat { source_id, index } => {
+                let position = self
+                    .sources
+                    .iter()
+                    .position(|s| s.id == source_id.as_str())
+                    .expect("the error names a source that was in the arguments");
+                match self.sources[position].from {
+                    SourceFrom::Modifiers(_) => {
+                        format!("sources[{position}].from.modifiers[{index}].stat")
+                    }
+                    // The stat of an affix is a stat of the catalog, so an item
+                    // does not get here; this is the item as a whole.
+                    SourceFrom::Item(_) => format!("sources[{position}].from.item"),
+                }
+            }
         }
     }
 }

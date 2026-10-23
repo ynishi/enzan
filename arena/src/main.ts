@@ -131,9 +131,8 @@ async function main(): Promise<void> {
   const timedCore = timed(core, clock);
   const stamp = stampOf(contentFile, tuningFile, contractVersion());
   const names = new Map(spec.bases.map((base) => [base.id, base.name]));
-  // The slot of a base for drawing; the world's own counters are not touched.
+  // Counters for drawing, so the world's own are not touched.
   const scratch = newFindings();
-  const slotFor = (base: number) => slotOf(tuning, base, scratch);
 
   const maybeContext = canvas.getContext("2d");
   if (maybeContext === null) {
@@ -168,6 +167,8 @@ async function main(): Promise<void> {
   }
 
   let world = start();
+  // The slot of a base for drawing, by the classes of the world in play.
+  const slotFor = (base: number) => slotOf(world.classes, tuning, base, scratch);
   let savedAt = world.tick;
   let running = true;
 

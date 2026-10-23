@@ -7,99 +7,22 @@
 //!
 //! Values are `f64`. A rate is a decimal fraction (100% is `1.0`), and a
 //! reduction (reduced, less) is a negative value.
+//!
+//! The core gives no stat a meaning. `crit` or `life` are the content's names,
+//! so what a stat does in a hit (a crit roll, its multiplier, the stream it
+//! draws on) is the game's. That is why the core has no hit resolution.
 
-use core::fmt;
+use crate::key::{KeyError, key_type};
 
-/// Why a [`StatKey`] could not be built.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum StatKeyError {
-    /// The key is empty.
-    #[error("a stat key must not be empty")]
-    Empty,
-    /// The key is longer than 64 bytes.
-    #[error("a stat key must be at most 64 bytes")]
-    TooLong,
-    /// The first character is not `a-z`.
-    #[error("a stat key must start with a-z")]
-    InvalidStart,
-    /// A character after the first is not `a-z`, `0-9` or `_`.
-    #[error("a stat key may contain only a-z, 0-9 and _ (byte {index})")]
-    InvalidChar {
-        /// The byte position of the first invalid character.
-        index: usize,
-    },
-}
+/// Why a [`StatKey`] could not be built: the rule is the one of [`KeyError`].
+pub type StatKeyError = KeyError;
 
-/// The name of a stat, such as `life` or `fire_damage`.
-///
-/// A key is 1 to 64 bytes. The first character is `a-z`, and the rest are
-/// `a-z`, `0-9` or `_`. Only ASCII is allowed, so a byte is a character. The
-/// shape is fixed so a key reads the same in data, logs and code.
-///
-/// The checks run in this order and the first failure is returned: empty,
-/// too long, invalid start, invalid character (the byte position of the first
-/// one).
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct StatKey(String);
-
-impl StatKey {
-    const MAX_LEN: usize = 64;
-
-    /// The key as a string slice.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn validate(s: &str) -> Result<(), StatKeyError> {
-        let bytes = s.as_bytes();
-        if bytes.is_empty() {
-            return Err(StatKeyError::Empty);
-        }
-        if bytes.len() > Self::MAX_LEN {
-            return Err(StatKeyError::TooLong);
-        }
-        if !bytes[0].is_ascii_lowercase() {
-            return Err(StatKeyError::InvalidStart);
-        }
-        match bytes
-            .iter()
-            .position(|b| !(b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_'))
-        {
-            Some(index) => Err(StatKeyError::InvalidChar { index }),
-            None => Ok(()),
-        }
-    }
-}
-
-impl TryFrom<&str> for StatKey {
-    type Error = StatKeyError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::validate(value)?;
-        Ok(Self(value.to_owned()))
-    }
-}
-
-impl TryFrom<String> for StatKey {
-    type Error = StatKeyError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::validate(&value)?;
-        Ok(Self(value))
-    }
-}
-
-impl fmt::Display for StatKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl AsRef<str> for StatKey {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
+key_type! {
+    /// The name of a stat, such as `life` or `fire_damage`.
+    ///
+    /// Its shape is the one of [`KeyError`], which the names of a source and of a
+    /// class share, so a key reads the same in data, logs and code.
+    StatKey
 }
 
 /// Why a [`Bounds`] could not be built.
@@ -370,7 +293,8 @@ pub enum EvaluateError {
 ///
 /// The sums and the product in [`ModifierSet::evaluate`] are taken in that
 /// order. Order can change an `f64` result, so a caller that joins one set per
-/// source joins them in a fixed order.
+/// source joins them in a fixed order; [`Sheet`](crate::sheet::Sheet) states
+/// the order it uses.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModifierSet {
     modifiers: Vec<Modifier>,

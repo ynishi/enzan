@@ -10,7 +10,13 @@
 import type * as Pkg from "../pkg/enzan_wasm.js";
 
 /** The calls made on a loaded `Content`. */
-export const CONTENT_CALLS = ["rollDrop", "evaluateStats", "gainExperience"] as const;
+export const CONTENT_CALLS = [
+  "rollDrop",
+  "evaluateSheet",
+  "checkItem",
+  "bases",
+  "gainExperience",
+] as const;
 /** The free functions of the package that draw on a random state. */
 export const RNG_CALLS = ["rngStream", "rngNextF64", "rngBelow"] as const;
 /** Every call of a `Core`, as `Findings` counts them. */
@@ -38,27 +44,14 @@ export function wrapCore(core: Core, wrap: CallWrapper): Core {
   return wrapped as Core;
 }
 
-export type { ItemRoll, ModifierInput, Progress, RolledAffix } from "../pkg/enzan_wasm.js";
+export type {
+  BaseInfo,
+  ItemInput,
+  ItemRoll,
+  ModifierInput,
+  Progress,
+  RolledAffix,
+  SourceInput,
+} from "../pkg/enzan_wasm.js";
 
 export type ModifierKind = Pkg.ModifierInput["modifier"];
-
-/**
- * The kinds of modifier, for checking a save. The package gives them as a type
- * only, so they are listed here, and the two checks below fail to compile if
- * the list and the generated type ever differ.
- */
-/**
- * The kinds of modifier, for checking a save. `modifierKinds()` from the
- * package provides this at runtime; the sim keeps this list to remain pure
- * of runtime package imports and checks it against `ModifierKind` at compile
- * time and in smoke.
- */
-export const MODIFIER_KINDS = ["added", "increased", "more"] as const satisfies readonly ModifierKind[];
-
-type Missing = Exclude<ModifierKind, (typeof MODIFIER_KINDS)[number]>;
-const noneMissing: [Missing] extends [never] ? true : Missing = true;
-void noneMissing;
-
-export function isModifierKind(value: string): value is ModifierKind {
-  return (MODIFIER_KINDS as readonly string[]).includes(value);
-}

@@ -42,7 +42,7 @@ use std::collections::BTreeSet;
 
 use crate::curve::Level;
 use crate::rng::{Rng, WeightedTable, WeightedTableError, accumulate};
-use crate::stat::Modifier;
+use crate::stat::{Modifier, ModifierSet};
 
 /// Why a [`Chance`] could not be built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -455,32 +455,23 @@ impl AffixPool {
 
     /// Rolls the affixes of an item of `item_level` and `rarity`.
     ///
-    /// R12: an affix is a candidate when, all at once, (a) `rarity` has room
-    /// for its kind ([`Rarity`] counts the prefixes and suffixes chosen so
-    /// far), (b) its required level is at most `item_level`, and (c) its group
-    /// has not been chosen yet. Candidates are taken in the order of the pool.
-    /// One is drawn by weight, then its value. The group of the chosen affix is
-    /// then chosen too, so the same affix cannot come up twice. The chosen
-    /// groups are kept in a `Vec` in the order they were chosen, as a hash set
-    /// would read the OS for its seed.
+    /// R12: the candidates are the affixes that the picks so far admit (room for
+    /// the kind in the rarity, required level, group; stated on the crate's
+    /// `Picks`), taken in the order of the pool. One is drawn by weight, then
+    /// its value, and then it is taken into the picks.
     ///
     /// The number of affixes comes from [`Rarity`] (R13) and is fewer when
     /// candidates run out. The order of draws is in the module doc.
     pub fn roll(&self, rarity: &Rarity, item_level: Level, rng: &mut Rng) -> Vec<RolledAffix> {
         let n = rarity.affix_count.draw(rng);
         let mut rolled = Vec::new();
-        let mut groups: Vec<AffixGroup> = Vec::new();
-        let (mut prefixes, mut suffixes) = (0u32, 0u32);
+        let mut picks = Picks::default();
         for _ in 0..n {
             let candidates: Vec<(usize, NonZeroU32)> = self
                 .affixes
                 .iter()
                 .enumerate()
-                .filter(|(_, a)| {
-                    rarity.has_room(a.kind, prefixes, suffixes)
-                        && a.required_level <= item_level
-                        && !groups.contains(&a.group)
-                })
+                .filter(|(_, a)| picks.admits(rarity, a, item_level))
                 .map(|(i, a)| (i, a.weight))
                 .collect();
             if candidates.is_empty() {
@@ -492,17 +483,50 @@ impl AffixPool {
             );
             let def = &self.affixes[*table.draw(rng)];
             let modifier = Modifier::between(&def.low, &def.high, rng.next_f64());
-            match def.kind {
-                AffixKind::Prefix => prefixes += 1,
-                AffixKind::Suffix => suffixes += 1,
-            }
-            groups.push(def.group);
+            picks.take(def);
             rolled.push(RolledAffix {
                 id: def.id,
                 modifier,
             });
         }
         rolled
+    }
+}
+
+/// What an item holds so far, and so which affixes it can take next.
+///
+/// R12: an affix is admitted when, all at once, (a) the rarity has room for its
+/// kind ([`Rarity`] limits the prefixes and suffixes), (b) its required level is
+/// at most the item level, and (c) its group has not been chosen yet. Taking an
+/// affix chooses its group too, so the same affix cannot come up twice. The
+/// chosen groups are kept in a `Vec` in the order they were chosen, as a hash
+/// set would read the OS for its seed.
+///
+/// A roll and a check of a given item both go through this type, so the
+/// condition is written nowhere else.
+#[derive(Debug, Default)]
+pub(crate) struct Picks {
+    prefixes: u32,
+    suffixes: u32,
+    groups: Vec<AffixGroup>,
+}
+
+impl Picks {
+    /// Whether an item of `rarity` and `item_level` holding these picks can take
+    /// `affix` next.
+    pub(crate) fn admits(&self, rarity: &Rarity, affix: &AffixDef, item_level: Level) -> bool {
+        rarity.has_room(affix.kind, self.prefixes, self.suffixes)
+            && affix.required_level <= item_level
+            && !self.groups.contains(&affix.group)
+    }
+
+    /// Records that the item took `affix`.
+    pub(crate) fn take(&mut self, affix: &AffixDef) {
+        match affix.kind {
+            AffixKind::Prefix => self.prefixes += 1,
+            AffixKind::Suffix => self.suffixes += 1,
+        }
+        self.groups.push(affix.group);
     }
 }
 
@@ -579,6 +603,10 @@ pub struct RolledAffix {
 }
 
 impl RolledAffix {
+    pub(crate) fn new(id: AffixId, modifier: Modifier) -> Self {
+        Self { id, modifier }
+    }
+
     /// The id of the [`AffixDef`] it came from.
     #[must_use]
     pub fn id(&self) -> AffixId {
@@ -597,10 +625,25 @@ impl RolledAffix {
 pub struct ItemRoll<B> {
     base: B,
     rarity: RarityId,
+    item_level: Level,
     affixes: Vec<RolledAffix>,
 }
 
 impl<B> ItemRoll<B> {
+    pub(crate) fn new(
+        base: B,
+        rarity: RarityId,
+        item_level: Level,
+        affixes: Vec<RolledAffix>,
+    ) -> Self {
+        Self {
+            base,
+            rarity,
+            item_level,
+            affixes,
+        }
+    }
+
     /// The base.
     #[must_use]
     pub fn base(&self) -> &B {
@@ -613,10 +656,23 @@ impl<B> ItemRoll<B> {
         self.rarity
     }
 
+    /// The item level it was rolled at, so the item can be checked again
+    /// ([`Catalog::check_item`](crate::catalog::Catalog::check_item)).
+    #[must_use]
+    pub fn item_level(&self) -> Level {
+        self.item_level
+    }
+
     /// The affixes in the order they were drawn.
     #[must_use]
     pub fn affixes(&self) -> &[RolledAffix] {
         &self.affixes
+    }
+
+    /// The modifiers of the affixes, in the order they were drawn.
+    #[must_use]
+    pub fn modifiers(&self) -> ModifierSet {
+        self.affixes.iter().map(|a| a.modifier.clone()).collect()
     }
 
     /// Gives back the base.
@@ -638,11 +694,7 @@ pub fn roll_item<B>(
 ) -> ItemRoll<B> {
     let rarity = rarities.draw(rng);
     let affixes = pool.roll(rarity, item_level, rng);
-    ItemRoll {
-        base,
-        rarity: rarity.id,
-        affixes,
-    }
+    ItemRoll::new(base, rarity.id, item_level, affixes)
 }
 
 #[cfg(test)]
@@ -984,5 +1036,51 @@ mod tests {
                 (4, 0.21812952566240068)
             ]
         );
+    }
+
+    #[test]
+    fn an_item_keeps_the_level_it_was_rolled_at() {
+        let (rarities, p) = fixture();
+        for level in [1, 7, 10] {
+            let item = roll_item("sword", &rarities, &p, lvl(level), &mut rng(3));
+            assert_eq!(item.item_level(), lvl(level));
+        }
+    }
+
+    #[test]
+    fn modifiers_are_those_of_the_affixes_in_the_order_drawn() {
+        let (rarities, p) = fixture();
+        let rare = &rarities.entries()[1].0;
+        let rolled = p.roll(rare, lvl(10), &mut rng(1234567));
+        let item = ItemRoll::new("sword", rare.id(), lvl(10), rolled.clone());
+        let want: Vec<Modifier> = rolled.iter().map(|a| a.modifier().clone()).collect();
+        assert_eq!(item.modifiers().modifiers(), want);
+        assert_eq!(want.len(), 3);
+    }
+
+    #[test]
+    fn picks_admit_by_room_level_and_group_and_take_updates_them() {
+        let r = rarity(1, 3, 1, 1);
+        let mut late = spec(3, Prefix, 2, 1.0, 2.0);
+        late.required_level = lvl(5);
+        let (a, b, c, s) = (
+            def(spec(1, Prefix, 1, 1.0, 2.0)),
+            def(spec(2, Prefix, 1, 1.0, 2.0)),
+            def(late),
+            def(spec(4, Suffix, 3, 1.0, 2.0)),
+        );
+        let mut picks = Picks::default();
+        assert!(picks.admits(&r, &a, lvl(1)));
+        assert!(!picks.admits(&r, &c, lvl(4)));
+        assert!(picks.admits(&r, &c, lvl(5)));
+        picks.take(&a);
+        // Same group as `a`.
+        assert!(!picks.admits(&r, &b, lvl(1)));
+        // The one prefix is used, so another group does not fit either.
+        assert!(!picks.admits(&r, &c, lvl(5)));
+        // A suffix has its own room.
+        assert!(picks.admits(&r, &s, lvl(1)));
+        picks.take(&s);
+        assert!(!picks.admits(&r, &s, lvl(1)));
     }
 }

@@ -1,11 +1,12 @@
 // The state of a game, and the numbers it is run with.
 //
 // `World` is plain data: numbers, strings, arrays, and the bigint random
-// states. It is what `save.ts` writes, apart from `stats` and `findings`.
+// states. It is what `save.ts` writes, apart from `classes`, `stats` and
+// `findings`.
 
 import type { Core, ItemRoll, Progress } from "./core.ts";
 import { type Findings, meter, newFindings } from "./findings.ts";
-import { playerStats, type Slot, type StatKey } from "./glue/equip.ts";
+import { type BaseClasses, baseClasses, playerStats, type Slot, type StatKey } from "./glue/equip.ts";
 
 /** The numbers the content spec cannot hold, read from tuning.json. */
 export interface Tuning {
@@ -22,8 +23,11 @@ export interface Tuning {
   };
   /** The drop table every defeat rolls. */
   dropTable: number;
-  /** The slot of each base, by the id of the base. */
-  slots: Record<string, string>;
+  /**
+   * The slot each class of base is worn in. The class is the content's (the
+   * `class` of a base); which slot takes a class is the game's rule.
+   */
+  slotOfClass: Record<string, string>;
   enemy: {
     radius: number;
     /** Ticks between two hits of one enemy that stays in contact. */
@@ -98,6 +102,11 @@ export interface World {
   nextId: number;
   /** The player is dead and nothing moves any more. */
   over: boolean;
+  /**
+   * The class of each base, asked of the content once when the world is made
+   * or loaded; not saved, since the content gives it again.
+   */
+  classes: BaseClasses;
   /** Derived from the level and the equipment; not saved. */
   stats: Stats;
   /** Not saved. */
@@ -135,6 +144,7 @@ export function newWorld(seed: bigint, core: Core, tuning: Tuning): World {
     director: { wave: 0, spawnCooldown: 0 },
     nextId: 1,
     over: false,
+    classes: baseClasses(counted),
     stats,
     findings,
   };

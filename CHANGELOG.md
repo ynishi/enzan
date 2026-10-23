@@ -13,6 +13,18 @@ and this project adheres to
 - Runtime lists of the interface's closed sets in `enzan-wasm`: `modifierKinds()`,
   `errorCodes()`, and `Content::statKeys` on loaded content.
 - `StatKey::as_str` in `enzan-core`.
+- `sheet` in `enzan-core`: `Sheet`, the modifier sets of a character kept by
+  `SourceId`, and `Catalog::evaluate_sheet`, which evaluates them in ascending
+  id and, within a source, in the order added. `Catalog::check_item` says
+  whether the catalog can roll an item at an item level (`ItemError` tells why
+  not); `ItemRoll` now holds the `item_level` it was rolled at and gives its
+  `modifiers()`; `BaseDef` takes an optional `ItemClass`, which nothing in the
+  core reads. A source id, a class and a stat key share one rule, `KeyError`.
+- `enzan-wasm`: `evaluateSheet`, `checkItem` and `bases()`; `class` on a base in
+  the spec; an item result carries `itemLevel`; and the codes `invalid-key`,
+  `duplicate-source`, `unknown-rarity`, `unknown-affix` and `invalid-item`.
+  Arguments skip fields they do not know, so an item `rollDrop` gave can be
+  passed to `checkItem` as it is; contract version stays 1.
 - `rng` in `enzan-core`: `Seed`, `Rng` (SplitMix64, same sequence natively and in
   WebAssembly) and `WeightedTable` for seeded, integer-weighted draws.
 - `stat` in `enzan-core`: `StatKey`, `Bounds`, `StatDef`, `Modifier` and
@@ -69,6 +81,11 @@ and this project adheres to
 
 ### Changed
 
+- Evaluating through a `Sheet` orders sources by id. A caller that joined one
+  set per source in another order (the arena did, by level and then slot) gets
+  different bits for the same modifiers.
+- `StatKeyError` is now an alias of `KeyError`, whose messages say "key" and not
+  "stat key". `BaseDef::new` takes a third argument, the optional class.
 - `just check` builds and lints for `wasm32-unknown-unknown` and runs the `enzan-core`
   tests as WebAssembly (`wasm32-wasip1`, under node 22), including a
   `determinism` test that pins one digest per module.
