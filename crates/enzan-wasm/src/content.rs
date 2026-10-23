@@ -76,7 +76,7 @@ fn catalog_of(spec: &Ts<ContentSpec>) -> Result<Catalog, Vec<Issue>> {
 /// plain `Error` wasm-bindgen throws for a freed object, not an `EnzanError`.
 #[wasm_bindgen]
 pub struct Content {
-    catalog: Catalog,
+    pub(crate) catalog: Catalog,
 }
 
 #[wasm_bindgen]
@@ -152,5 +152,19 @@ impl Content {
         args: Ts<MeasureProgressionArgs>,
     ) -> Result<Ts<ProgressionReport>, JsValue> {
         out(&read(&args)?.run(&self.catalog).map_err(thrown)?)
+    }
+
+    /// The keys of the stats defined in the content, in ascending order.
+    #[wasm_bindgen(js_name = statKeys)]
+    #[must_use]
+    pub fn stat_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
+            .catalog
+            .stats()
+            .iter()
+            .map(|s| s.key().as_str().to_owned())
+            .collect();
+        keys.sort();
+        keys
     }
 }

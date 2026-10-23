@@ -61,6 +61,8 @@
 
 #![warn(missing_docs)]
 
+#[macro_use]
+mod closed_set;
 mod content;
 mod dto;
 mod error;
@@ -87,6 +89,7 @@ use tsify::Ts;
 use wasm_bindgen::prelude::*;
 
 use crate::content::{out, read, thrown};
+use crate::error::serde_name;
 
 /// The version of the contract this package speaks.
 ///
@@ -125,6 +128,26 @@ pub fn is_enzan_error(e: &JsValue) -> bool {
     e.is_object()
         && js_sys::Reflect::get(e, &"name".into())
             .is_ok_and(|name| name.as_string().as_deref() == Some("EnzanError"))
+}
+
+/// The kinds of modifier, in the order they combine: `added`, `increased`,
+/// `more`.
+#[wasm_bindgen(js_name = modifierKinds, skip_typescript)]
+#[must_use]
+pub fn modifier_kinds() -> Vec<JsValue> {
+    ModifierKind::ALL
+        .iter()
+        .map(|k| JsValue::from_str(&serde_name(k)))
+        .collect()
+}
+
+/// Every error code the package throws or returns, in ascending order.
+#[wasm_bindgen(js_name = errorCodes, skip_typescript)]
+#[must_use]
+pub fn error_codes() -> Vec<JsValue> {
+    let mut names: Vec<String> = ErrorCode::ALL.iter().map(|c| c.name()).collect();
+    names.sort();
+    names.into_iter().map(|s| JsValue::from_str(&s)).collect()
 }
 
 /// The random state that starts stream `stream` of `seed`.

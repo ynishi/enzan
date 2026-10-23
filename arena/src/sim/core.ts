@@ -47,9 +47,12 @@ export type ModifierKind = Pkg.ModifierInput["modifier"];
  * only, so they are listed here, and the two checks below fail to compile if
  * the list and the generated type ever differ.
  */
-// FINDING: the interface exports the modifier kinds only as a type, so a game
-// that checks its own data has to list them again; a runtime list from the
-// package would remove this copy.
+/**
+ * The kinds of modifier, for checking a save. `modifierKinds()` from the
+ * package provides this at runtime; the sim keeps this list to remain pure
+ * of runtime package imports and checks it against `ModifierKind` at compile
+ * time and in smoke.
+ */
 export const MODIFIER_KINDS = ["added", "increased", "more"] as const satisfies readonly ModifierKind[];
 
 type Missing = Exclude<ModifierKind, (typeof MODIFIER_KINDS)[number]>;

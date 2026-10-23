@@ -10,6 +10,9 @@ and this project adheres to
 
 ### Added
 
+- Runtime lists of the interface's closed sets in `enzan-wasm`: `modifierKinds()`,
+  `errorCodes()`, and `Content::statKeys` on loaded content.
+- `StatKey::as_str` in `enzan-core`.
 - `rng` in `enzan-core`: `Seed`, `Rng` (SplitMix64, same sequence natively and in
   WebAssembly) and `WeightedTable` for seeded, integer-weighted draws.
 - `stat` in `enzan-core`: `StatKey`, `Bounds`, `StatDef`, `Modifier` and
