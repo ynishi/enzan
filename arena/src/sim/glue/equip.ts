@@ -1,7 +1,7 @@
 // What the game computes about equipment and the player's strength because the
 // core does not. Each piece is marked FINDING with what is missing.
 
-import type { Core, ItemRoll, ModifierInput } from "../core.ts";
+import type { Core, ModifierInput, SourceInput } from "../core.ts";
 import { type Findings, used } from "../findings.ts";
 import type { Equipment, Stats, Tuning } from "../world.ts";
 
@@ -18,37 +18,43 @@ function isSlot(name: string): name is Slot {
   return (SLOTS as readonly string[]).includes(name);
 }
 
+/** The class the content gives each base, by the id of the base; null for a base with none. */
+export type BaseClasses = Record<number, string | null>;
+
 /**
- * The slot an item of `base` is worn in.
- *
- * FINDING: a base in the content spec has an id and a name and nothing else, so
- * the core has no equipment slot. The game keeps a table of its own
- * (tuning.json, `slots`) and reads it here.
+ * The class of every base of the content, asked of the core once. `World` keeps
+ * the answer (outside its saved fields), so `slotOf` does not ask again for
+ * each item.
  */
-export function slotOf(tuning: Tuning, base: number, findings: Findings): Slot {
-  used(findings, "slotOf");
-  const slot = tuning.slots[String(base)];
-  if (slot === undefined || !isSlot(slot)) {
-    throw new Error(`tuning.json has no slot for base ${base}`);
+export function baseClasses(core: Core): BaseClasses {
+  const classes: BaseClasses = {};
+  for (const base of core.bases()) {
+    classes[base.id] = base.class;
   }
-  return slot;
+  return classes;
 }
 
 /**
- * The modifiers an item adds to the player's stats.
+ * The slot an item of `base` is worn in: the content's class of the base,
+ * through the tuning's slot for that class.
  *
- * FINDING: a `RolledAffix` already has the shape of a `ModifierInput` (stat,
- * modifier, value) plus the id of the affix, but the two are different types
- * and the game copies the three fields. `evaluateStats` could take items, or
- * the core could say which modifiers an item stands for.
+ * That a class means a slot is the game's rule by design (the core reads a
+ * class and does nothing with it).
  */
-export function itemModifiers(item: ItemRoll, findings: Findings): ModifierInput[] {
-  used(findings, "itemModifiers");
-  return item.affixes.map((affix) => ({
-    stat: affix.stat,
-    modifier: affix.modifier,
-    value: affix.value,
-  }));
+export function slotOf(classes: BaseClasses, tuning: Tuning, base: number, findings: Findings): Slot {
+  used(findings, "slotOf");
+  const found = classes[base];
+  if (found === undefined) {
+    throw new Error(`the content has no base ${base}`);
+  }
+  if (found === null) {
+    throw new Error(`base ${base} has no class in the content`);
+  }
+  const slot = tuning.slotOfClass[found];
+  if (slot === undefined || !isSlot(slot)) {
+    throw new Error(`tuning.json has no slot for the class ${found}`);
+  }
+  return slot;
 }
 
 /**
@@ -71,11 +77,11 @@ export function levelBonus(tuning: Tuning, level: number, findings: Findings): M
 /**
  * The stats of the player at a level with the equipment worn.
  *
- * FINDING: the core evaluates the modifiers it is handed and keeps no
- * character, so the game collects them in a fixed order (level, then the slots
- * in turn: the same order after a load), asks again after every level gained
- * and every item put on, and turns the list that comes back, in the order
- * asked, into a record.
+ * The core evaluates the sources it is handed and keeps no character, so the
+ * game asks again after every level gained and every item put on: one source
+ * for the level and one for each worn slot, named by the slot. The sources
+ * count in ascending order of id, which is the core's rule, so the order given
+ * here does not matter.
  */
 export function playerStats(
   core: Core,
@@ -85,19 +91,21 @@ export function playerStats(
   findings: Findings,
 ): Stats {
   used(findings, "playerStats");
-  const modifiers = levelBonus(tuning, level, findings);
+  const sources: SourceInput[] = [
+    { id: "level", from: { modifiers: levelBonus(tuning, level, findings) } },
+  ];
   for (const slot of SLOTS) {
     const item = equipment[slot];
     if (item !== undefined) {
-      modifiers.push(...itemModifiers(item, findings));
+      sources.push({ id: slot, from: { item } });
     }
   }
-  const values = core.evaluateStats({ modifiers, stats: [...STAT_KEYS] });
+  const values = core.evaluateSheet({ sources, stats: [...STAT_KEYS] });
   const stats = {} as Stats;
   for (const key of STAT_KEYS) {
     const found = values.find((entry) => entry.stat === key);
     if (found === undefined) {
-      throw new Error(`evaluateStats gave no value for ${key}`);
+      throw new Error(`evaluateSheet gave no value for ${key}`);
     }
     stats[key] = found.value;
   }

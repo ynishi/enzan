@@ -42,7 +42,10 @@
 //!    `invalid-modifier`).
 //! 9. **Versioned.** [`CONTRACT_VERSION`] changes when a change breaks what a
 //!    caller relies on. A field added to a result does not break it. A spec
-//!    refuses fields it does not know.
+//!    refuses fields it does not know; the arguments of a call skip them (apart
+//!    from the one-key object of a [`SourceFrom`], whose key is its kind), which
+//!    is why an item `rollDrop` gave can be passed as an `ItemInput`, and
+//!    making arguments refuse them would break callers.
 //! 10. **Call per event.** A call crosses the boundary once, so make it per game
 //!     event (a defeat, a level gained) and not per number. A small object
 //!     costs about 3 microseconds to cross.
@@ -73,11 +76,12 @@ mod tests;
 
 pub use content::Content;
 pub use dto::{
-    AffixReport, AtExperience, Bin, EvaluateStatsArgs, GainExperienceArgs, GainResult, ItemRoll,
-    LeveledUp, LootReport, MeasureLootArgs, MeasureProgressionArgs, ModifierInput, ModifierKind,
-    Progress, ProgressionReport, RarityCount, RngBelowArgs, RngBelowResult, RngNextF64Args,
-    RngNextF64Result, RngStreamArgs, RollDropArgs, RollDropResult, RollItemArgs, RollItemResult,
-    RolledAffix, StatValue, Summary, ToLevel,
+    AffixInput, AffixReport, AtExperience, BaseInfo, Bin, CheckItemArgs, EvaluateSheetArgs,
+    EvaluateStatsArgs, GainExperienceArgs, GainResult, ItemInput, ItemRoll, LeveledUp, LootReport,
+    MeasureLootArgs, MeasureProgressionArgs, ModifierInput, ModifierKind, Progress,
+    ProgressionReport, RarityCount, RngBelowArgs, RngBelowResult, RngNextF64Args, RngNextF64Result,
+    RngStreamArgs, RollDropArgs, RollDropResult, RollItemArgs, RollItemResult, RolledAffix,
+    SourceFrom, SourceInput, StatValue, Summary, ToLevel,
 };
 pub use error::{ErrorCode, Issue};
 pub use spec::{
@@ -97,7 +101,8 @@ use crate::error::serde_name;
 /// meaning of a field of a spec, an argument or a result; a spec that was
 /// accepted and is now refused; a code removed or given another meaning; a
 /// change to the order in which the random state is drawn from (the same state
-/// then gives other items). A field added to a result, and a code added for a
+/// then gives other items); arguments that refuse a field they do not know and
+/// used to skip it (see rule 9). A field added to a result, and a code added for a
 /// case that used to be another code's, do not raise it.
 pub const CONTRACT_VERSION: u32 = 1;
 

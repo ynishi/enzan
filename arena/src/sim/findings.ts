@@ -8,7 +8,6 @@ import { CORE_CALLS, type Core, type CoreCall, wrapCore } from "./core.ts";
 export const GLUE_NAMES = [
   "enemyStats",
   "slotOf",
-  "itemModifiers",
   "levelBonus",
   "playerStats",
   "hitDamage",

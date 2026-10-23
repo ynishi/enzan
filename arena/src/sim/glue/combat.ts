@@ -10,7 +10,9 @@ import type { Stats, Tuning } from "../world.ts";
  * FINDING: the content has a `crit` stat, a number between 0 and 1, and the
  * core says nothing of what it means. The roll against it, the multiplier of a
  * critical hit and the stream the roll draws on (`rngNextF64` of the crit
- * stream) are the game's.
+ * stream) are the game's. The core leaves a stat's meaning to the game on
+ * purpose (the `stat` module doc of `enzan-core`); a hit rule in the content is
+ * a separate design, not yet made.
  */
 export function hitDamage(
   core: Core,

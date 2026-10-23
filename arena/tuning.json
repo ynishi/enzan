@@ -10,7 +10,7 @@
     "levelBonus": { "life": 10, "damage": 2 }
   },
   "dropTable": 1,
-  "slots": { "1": "weapon", "2": "offhand", "3": "ring" },
+  "slotOfClass": { "sword": "weapon", "shield": "offhand", "ring": "ring" },
   "enemy": {
     "radius": 8,
     "contactPeriod": 30,

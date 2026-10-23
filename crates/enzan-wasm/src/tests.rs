@@ -13,9 +13,10 @@ use enzan_core::stat::StatDefError;
 use serde_json::{Value, json};
 
 use crate::dto::{
-    EvaluateStatsArgs, GainExperienceArgs, MAX_LOOT_ITEMS, MeasureLootArgs, MeasureProgressionArgs,
-    ModifierInput, ModifierKind, Progress, RngBelowArgs, RngNextF64Args, RngStreamArgs,
-    RollDropArgs, RollItemArgs,
+    self, AffixInput, CheckItemArgs, EvaluateSheetArgs, EvaluateStatsArgs, GainExperienceArgs,
+    ItemInput, ItemRoll, MAX_LOOT_ITEMS, MeasureLootArgs, MeasureProgressionArgs, ModifierInput,
+    ModifierKind, Progress, RngBelowArgs, RngNextF64Args, RngStreamArgs, RollDropArgs,
+    RollItemArgs, SourceFrom, SourceInput,
 };
 use crate::error::{Coded, ErrorCode, Issue, serde_name, weighted_table_code};
 use crate::spec::{self, ContentSpec};
@@ -408,81 +409,133 @@ fn cases() -> Vec<(ErrorCode, &'static str, Case)> {
                 )
             }),
         ),
+        (
+            C::InvalidKey,
+            "bases[1].class",
+            Case::Spec(|| first_issue(|v| set(v, "/bases/1/class", json!("Not A Class")))),
+        ),
+        (
+            C::DuplicateSource,
+            "sources[1].id",
+            Case::Call(|c| {
+                ignore(
+                    EvaluateSheetArgs {
+                        sources: vec![
+                            modifiers_source("level", &[]),
+                            modifiers_source("level", &[]),
+                        ],
+                        stats: vec![],
+                    }
+                    .run(c),
+                )
+            }),
+        ),
+        (
+            C::UnknownRarity,
+            "item.rarity",
+            Case::Call(|c| ignore(check(c, 1, 99, 10, &[]))),
+        ),
+        (
+            C::UnknownAffix,
+            "item.affixes[0].id",
+            Case::Call(|c| ignore(check(c, 1, 3, 10, &[(99, 1.0)]))),
+        ),
+        (
+            C::InvalidItem,
+            "item.affixes[1]",
+            // Affixes 1 and 2 share a group.
+            Case::Call(|c| ignore(check(c, 1, 3, 10, &[(1, 2.0), (2, 8.0)]))),
+        ),
     ]
 }
 
-/// A position for each code, in the order of the enum. The match is exhaustive
-/// so that a new code stops this test from compiling until it is listed here and
-/// in [`ALL`].
-fn index(code: ErrorCode) -> usize {
-    use ErrorCode as C;
-    match code {
-        C::InvalidShape => 0,
-        C::InvalidStatKey => 1,
-        C::DuplicateStat => 2,
-        C::InvalidBounds => 3,
-        C::InvalidBaseValue => 4,
-        C::DuplicateBase => 5,
-        C::NoRarity => 6,
-        C::DuplicateRarity => 7,
-        C::InvalidWeight => 8,
-        C::InvalidRange => 9,
-        C::InvalidModifier => 10,
-        C::AffixRange => 11,
-        C::DuplicateAffix => 12,
-        C::UnknownStat => 13,
-        C::WeightOverflow => 14,
-        C::InvalidChance => 15,
-        C::DuplicateTable => 16,
-        C::UnknownBase => 17,
-        C::NoBase => 18,
-        C::InvalidCurve => 19,
-        C::CurveTooShort => 20,
-        C::CurveOverflow => 21,
-        C::UnknownTable => 22,
-        C::InvalidLevel => 23,
-        C::TrialsOutOfRange => 24,
-        C::InvalidExperience => 25,
-        C::LevelAboveCap => 26,
-        C::NoProgression => 27,
-        C::Overflow => 28,
+fn item_input(base: u32, rarity: u32, item_level: u32, affixes: &[(u32, f64)]) -> ItemInput {
+    ItemInput {
+        base,
+        rarity,
+        item_level,
+        affixes: affixes
+            .iter()
+            .map(|&(id, value)| AffixInput { id, value })
+            .collect(),
     }
 }
 
-const ALL: [ErrorCode; 29] = {
-    use ErrorCode as C;
-    [
-        C::InvalidShape,
-        C::InvalidStatKey,
-        C::DuplicateStat,
-        C::InvalidBounds,
-        C::InvalidBaseValue,
-        C::DuplicateBase,
-        C::NoRarity,
-        C::DuplicateRarity,
-        C::InvalidWeight,
-        C::InvalidRange,
-        C::InvalidModifier,
-        C::AffixRange,
-        C::DuplicateAffix,
-        C::UnknownStat,
-        C::WeightOverflow,
-        C::InvalidChance,
-        C::DuplicateTable,
-        C::UnknownBase,
-        C::NoBase,
-        C::InvalidCurve,
-        C::CurveTooShort,
-        C::CurveOverflow,
-        C::UnknownTable,
-        C::InvalidLevel,
-        C::TrialsOutOfRange,
-        C::InvalidExperience,
-        C::LevelAboveCap,
-        C::NoProgression,
-        C::Overflow,
-    ]
-};
+fn check(
+    catalog: &Catalog,
+    base: u32,
+    rarity: u32,
+    item_level: u32,
+    affixes: &[(u32, f64)],
+) -> Result<ItemRoll, Issue> {
+    CheckItemArgs {
+        item: item_input(base, rarity, item_level, affixes),
+    }
+    .run(catalog)
+}
+
+fn modifiers_source(id: &str, modifiers: &[(&str, ModifierKind, f64)]) -> SourceInput {
+    SourceInput {
+        id: id.to_owned(),
+        from: SourceFrom::Modifiers(
+            modifiers
+                .iter()
+                .map(|&(stat, modifier, value)| ModifierInput {
+                    stat: stat.to_owned(),
+                    modifier,
+                    value,
+                })
+                .collect(),
+        ),
+    }
+}
+
+fn item_source(id: &str, item: ItemInput) -> SourceInput {
+    SourceInput {
+        id: id.to_owned(),
+        from: SourceFrom::Item(item),
+    }
+}
+
+/// The input form of an item that was rolled.
+fn input_of(item: &ItemRoll) -> ItemInput {
+    ItemInput {
+        base: item.base,
+        rarity: item.rarity,
+        item_level: item.item_level,
+        affixes: item
+            .affixes
+            .iter()
+            .map(|a| AffixInput {
+                id: a.id,
+                value: a.value,
+            })
+            .collect(),
+    }
+}
+
+/// Items of the fixture rolled at `item_level`, one for each state from 1.
+fn rolled_items(catalog: &Catalog, item_level: u32, count: u64) -> Vec<ItemRoll> {
+    (1..=count)
+        .map(|rng| {
+            RollItemArgs {
+                base: 1,
+                item_level,
+                rng,
+            }
+            .run(catalog)
+            .expect("the base is there")
+            .item
+        })
+        .collect()
+}
+
+fn values(found: &[crate::dto::StatValue]) -> Vec<(&str, u64)> {
+    found
+        .iter()
+        .map(|s| (s.stat.as_str(), s.value.to_bits()))
+        .collect()
+}
 
 #[test]
 fn every_code_has_a_case_that_gives_it() {
@@ -496,17 +549,16 @@ fn every_code_has_a_case_that_gives_it() {
         assert_eq!(pair(&issue), (*code, *at), "{issue:?}");
         assert!(!issue.message.is_empty(), "{code:?} has a message");
     }
-    // One row for each code, in the order of the enum.
+    // One row for each code, in the order of the enum, which `ALL` lists.
     let listed: Vec<ErrorCode> = cases.iter().map(|(code, ..)| *code).collect();
-    assert_eq!(listed, ALL);
-    assert!(ALL.iter().enumerate().all(|(i, &code)| index(code) == i));
+    assert_eq!(listed, ErrorCode::ALL);
 }
 
 #[test]
 fn the_name_of_a_code_is_its_kebab_case_form() {
     assert_eq!(ErrorCode::InvalidShape.name(), "invalid-shape");
     assert_eq!(ErrorCode::TrialsOutOfRange.name(), "trials-out-of-range");
-    for code in ALL {
+    for &code in ErrorCode::ALL {
         let name = code.name();
         assert!(
             name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
@@ -1125,4 +1177,471 @@ fn error_codes_list_is_sorted_and_unique() {
 fn stat_keys_from_content() {
     let content = crate::Content { catalog: catalog() };
     assert_eq!(content.stat_keys(), vec!["crit", "damage", "life"]);
+}
+
+// ---- items and sheets -----------------------------------------------------
+
+#[test]
+fn a_rolled_item_comes_back_from_check_item_equal() {
+    let catalog = catalog();
+    let mut with_affixes = 0;
+    for level in [1, 3, 10] {
+        for item in rolled_items(&catalog, level, 150) {
+            assert_eq!(item.item_level, level);
+            with_affixes += usize::from(!item.affixes.is_empty());
+            let again = CheckItemArgs {
+                item: input_of(&item),
+            }
+            .run(&catalog)
+            .expect("an item the content rolled");
+            assert_eq!(again, item);
+        }
+    }
+    assert!(with_affixes > 0, "the sweep had items with affixes");
+}
+
+#[test]
+fn an_item_in_its_output_form_reads_as_an_item_input() {
+    // The output of `rollItem` has fields an input does not (`stat`, `modifier`),
+    // and the arguments of a call skip what they do not know (contract rule 9).
+    let catalog = catalog();
+    let item = rolled_items(&catalog, 10, 40)
+        .into_iter()
+        .find(|i| !i.affixes.is_empty())
+        .expect("an item with affixes");
+    let json = serde_json::to_value(&item).expect("an item serializes");
+    assert_eq!(json["itemLevel"], 10);
+    let read: CheckItemArgs =
+        serde_json::from_value(json!({ "item": json })).expect("extra fields are skipped");
+    assert_eq!(read.item, input_of(&item));
+}
+
+#[test]
+fn check_item_says_where_a_refusal_is() {
+    let catalog = catalog();
+    let at = |result: Result<ItemRoll, Issue>| pair_owned(&result.expect_err("refused"));
+    let case = |code, at: &str| (code, at.to_owned());
+    assert_eq!(
+        at(check(&catalog, 99, 3, 10, &[])),
+        case(ErrorCode::UnknownBase, "item.base")
+    );
+    assert_eq!(
+        at(check(&catalog, 1, 99, 10, &[])),
+        case(ErrorCode::UnknownRarity, "item.rarity")
+    );
+    assert_eq!(
+        at(check(&catalog, 1, 3, 0, &[])),
+        case(ErrorCode::InvalidLevel, "item.itemLevel")
+    );
+    assert_eq!(
+        at(check(&catalog, 1, 3, 10, &[(3, 6.0), (99, 1.0)])),
+        case(ErrorCode::UnknownAffix, "item.affixes[1].id")
+    );
+    // Affix 2 asks for level 10.
+    assert_eq!(
+        at(check(&catalog, 1, 3, 9, &[(2, 8.0)])),
+        case(ErrorCode::InvalidItem, "item.affixes[0]")
+    );
+    // Affixes 1 and 3 are prefixes; a rarity of 1 prefix has no room for both.
+    assert_eq!(
+        at(check(&catalog, 1, 2, 10, &[(1, 2.0), (3, 6.0)])),
+        case(ErrorCode::InvalidItem, "item.affixes[1]")
+    );
+    assert_eq!(
+        at(check(&catalog, 1, 3, 10, &[(1, 5.5)])),
+        case(ErrorCode::InvalidItem, "item.affixes[0].value")
+    );
+    // Rarity 2 draws at most 2 affixes.
+    assert_eq!(
+        at(check(&catalog, 1, 2, 10, &[(1, 2.0), (4, 0.06), (5, 0.02)])),
+        case(ErrorCode::InvalidItem, "item.affixes")
+    );
+    // The values at the ends of the range are fine.
+    assert!(check(&catalog, 1, 3, 10, &[(1, 1.0), (3, 20.0)]).is_ok());
+}
+
+fn pair_owned(issue: &Issue) -> (ErrorCode, String) {
+    (issue.code, issue.at.clone())
+}
+
+#[test]
+fn a_sheet_gives_the_same_values_whatever_order_its_sources_come_in() {
+    let catalog = catalog();
+    let item = rolled_items(&catalog, 10, 60)
+        .into_iter()
+        .find(|i| i.affixes.len() >= 2)
+        .expect("an item with affixes");
+    let sources = vec![
+        item_source("weapon", input_of(&item)),
+        modifiers_source(
+            "level",
+            &[
+                ("life", ModifierKind::Added, 0.1),
+                ("damage", ModifierKind::Added, 0.2),
+                ("damage", ModifierKind::More, 0.3),
+            ],
+        ),
+        modifiers_source("ring", &[("damage", ModifierKind::Increased, 0.7)]),
+    ];
+    let stats: Vec<String> = ["damage", "life", "crit"].map(str::to_owned).to_vec();
+    let go = |sources: Vec<SourceInput>| {
+        EvaluateSheetArgs {
+            sources,
+            stats: stats.clone(),
+        }
+        .run(&catalog)
+        .expect("a sheet")
+    };
+    let given = go(sources.clone());
+    let mut reversed = sources.clone();
+    reversed.reverse();
+    assert_eq!(values(&given), values(&go(reversed)));
+    let rotated = vec![sources[1].clone(), sources[2].clone(), sources[0].clone()];
+    assert_eq!(values(&given), values(&go(rotated)));
+    assert_eq!(
+        given.iter().map(|s| s.stat.as_str()).collect::<Vec<_>>(),
+        ["damage", "life", "crit"]
+    );
+}
+
+#[test]
+fn a_sheet_equals_evaluate_stats_over_the_sets_joined_in_ascending_id() {
+    let catalog = catalog();
+    let item = rolled_items(&catalog, 10, 60)
+        .into_iter()
+        .find(|i| i.affixes.len() >= 2)
+        .expect("an item with affixes");
+    let level = [
+        ("damage", ModifierKind::Added, 0.1),
+        ("life", ModifierKind::More, 0.2),
+    ];
+    let ring = [("damage", ModifierKind::Added, 0.3)];
+    let stats: Vec<String> = ["damage", "life"].map(str::to_owned).to_vec();
+    let sheet = EvaluateSheetArgs {
+        sources: vec![
+            modifiers_source("ring", &ring),
+            item_source("weapon", input_of(&item)),
+            modifiers_source("level", &level),
+        ],
+        stats: stats.clone(),
+    }
+    .run(&catalog)
+    .expect("a sheet");
+
+    // "level", "ring", "weapon".
+    let input = |&(stat, modifier, value): &(&str, ModifierKind, f64)| ModifierInput {
+        stat: stat.to_owned(),
+        modifier,
+        value,
+    };
+    let mut joined: Vec<ModifierInput> = level.iter().map(input).collect();
+    joined.extend(ring.iter().map(input));
+    joined.extend(item.affixes.iter().map(|a| ModifierInput {
+        stat: a.stat.clone(),
+        modifier: a.modifier,
+        value: a.value,
+    }));
+    let plain = EvaluateStatsArgs {
+        modifiers: joined,
+        stats,
+    }
+    .run(&catalog)
+    .expect("stats");
+    assert_eq!(values(&sheet), values(&plain));
+}
+
+#[test]
+fn an_item_source_is_the_modifiers_of_its_affixes() {
+    let catalog = catalog();
+    let item = rolled_items(&catalog, 10, 60)
+        .into_iter()
+        .find(|i| i.affixes.len() >= 2)
+        .expect("an item with affixes");
+    let stats: Vec<String> = ["damage", "life", "crit"].map(str::to_owned).to_vec();
+    let run = |source: SourceInput| {
+        EvaluateSheetArgs {
+            sources: vec![source],
+            stats: stats.clone(),
+        }
+        .run(&catalog)
+        .expect("a sheet")
+    };
+    let from_item = run(item_source("weapon", input_of(&item)));
+    let from_modifiers = run(SourceInput {
+        id: "weapon".to_owned(),
+        from: SourceFrom::Modifiers(
+            item.affixes
+                .iter()
+                .map(|a| ModifierInput {
+                    stat: a.stat.clone(),
+                    modifier: a.modifier,
+                    value: a.value,
+                })
+                .collect(),
+        ),
+    });
+    assert_eq!(values(&from_item), values(&from_modifiers));
+    let bare = run(modifiers_source("weapon", &[]));
+    assert_ne!(values(&from_item), values(&bare));
+}
+
+#[test]
+fn a_repeated_source_id_is_refused_at_the_later_one() {
+    let found = EvaluateSheetArgs {
+        sources: vec![
+            modifiers_source("level", &[]),
+            modifiers_source("ring", &[]),
+            modifiers_source("level", &[]),
+        ],
+        stats: vec![],
+    }
+    .run(&catalog())
+    .expect_err("a repeat");
+    assert_eq!(pair(&found), (ErrorCode::DuplicateSource, "sources[2].id"));
+}
+
+#[test]
+fn a_source_id_that_is_not_a_key_is_invalid_key() {
+    let found = EvaluateSheetArgs {
+        sources: vec![
+            modifiers_source("level", &[]),
+            modifiers_source("Main Hand", &[]),
+        ],
+        stats: vec![],
+    }
+    .run(&catalog())
+    .expect_err("not a key");
+    assert_eq!(pair(&found), (ErrorCode::InvalidKey, "sources[1].id"));
+}
+
+#[test]
+fn a_refusal_in_a_source_is_placed_in_that_source() {
+    let catalog = catalog();
+    let run = |sources: Vec<SourceInput>| {
+        EvaluateSheetArgs {
+            sources,
+            stats: vec!["damage".to_owned()],
+        }
+        .run(&catalog)
+        .expect_err("refused")
+    };
+    let level = || modifiers_source("level", &[("damage", ModifierKind::Added, 1.0)]);
+    let at = |found: &Issue| (found.code, found.at.clone());
+
+    let found = run(vec![
+        level(),
+        modifiers_source(
+            "ring",
+            &[
+                ("damage", ModifierKind::Added, 1.0),
+                ("dmage", ModifierKind::Added, 1.0),
+            ],
+        ),
+    ]);
+    assert_eq!(
+        at(&found),
+        (
+            ErrorCode::UnknownStat,
+            "sources[1].from.modifiers[1].stat".to_owned()
+        )
+    );
+
+    let found = run(vec![
+        level(),
+        modifiers_source("ring", &[("Damage", ModifierKind::Added, 1.0)]),
+    ]);
+    assert_eq!(
+        at(&found),
+        (
+            ErrorCode::InvalidStatKey,
+            "sources[1].from.modifiers[0].stat".to_owned()
+        )
+    );
+
+    // The same refusals as `checkItem`'s, under the path of the item.
+    for (item, code, rest) in [
+        (item_input(99, 3, 10, &[]), ErrorCode::UnknownBase, "base"),
+        (
+            item_input(1, 99, 10, &[]),
+            ErrorCode::UnknownRarity,
+            "rarity",
+        ),
+        (
+            item_input(1, 3, 0, &[]),
+            ErrorCode::InvalidLevel,
+            "itemLevel",
+        ),
+        (
+            item_input(1, 3, 10, &[(99, 1.0)]),
+            ErrorCode::UnknownAffix,
+            "affixes[0].id",
+        ),
+        (
+            item_input(1, 3, 10, &[(1, 2.0), (2, 8.0)]),
+            ErrorCode::InvalidItem,
+            "affixes[1]",
+        ),
+        (
+            item_input(1, 3, 10, &[(1, 99.0)]),
+            ErrorCode::InvalidItem,
+            "affixes[0].value",
+        ),
+        (
+            item_input(1, 2, 10, &[(1, 2.0), (4, 0.06), (5, 0.02)]),
+            ErrorCode::InvalidItem,
+            "affixes",
+        ),
+    ] {
+        let found = run(vec![level(), item_source("weapon", item)]);
+        assert_eq!(
+            at(&found),
+            (code, format!("sources[1].from.item.{rest}")),
+            "{rest}"
+        );
+    }
+}
+
+#[test]
+fn a_stat_that_is_not_there_is_refused_at_the_stats() {
+    let found = EvaluateSheetArgs {
+        sources: vec![],
+        stats: vec!["damage".to_owned(), "mana".to_owned()],
+    }
+    .run(&catalog())
+    .expect_err("no stat");
+    assert_eq!(pair(&found), (ErrorCode::UnknownStat, "stats[1]"));
+}
+
+#[test]
+fn a_source_can_be_empty_and_a_sheet_can_have_none() {
+    let catalog = catalog();
+    let stats = vec!["damage".to_owned(), "life".to_owned()];
+    let none = EvaluateSheetArgs {
+        sources: vec![],
+        stats: stats.clone(),
+    }
+    .run(&catalog)
+    .expect("a sheet");
+    let empty = EvaluateSheetArgs {
+        sources: vec![modifiers_source("level", &[])],
+        stats,
+    }
+    .run(&catalog)
+    .expect("a sheet");
+    assert_eq!(values(&none), values(&empty));
+    assert_eq!(none[0].value, 10.0);
+    assert_eq!(none[1].value, 100.0);
+}
+
+#[test]
+fn source_shapes_read_as_one_of_two_tags() {
+    let read = |value: Value| serde_json::from_value::<SourceInput>(value);
+    let modifiers = read(json!({ "id": "level", "from": { "modifiers": [
+        { "stat": "life", "modifier": "added", "value": 1 }
+    ] } }))
+    .expect("modifiers");
+    assert!(matches!(modifiers.from, SourceFrom::Modifiers(ref m) if m.len() == 1));
+    let item = read(json!({ "id": "weapon", "from": { "item":
+        { "base": 1, "rarity": 1, "itemLevel": 1, "affixes": [] } } }))
+    .expect("item");
+    assert!(matches!(item.from, SourceFrom::Item(_)));
+    assert!(read(json!({ "id": "x", "from": { "items": [] } })).is_err());
+}
+
+#[test]
+fn bases_are_listed_by_id_with_their_class() {
+    let value = edited(|v| {
+        set(v, "/bases/0/class", json!("weapon"));
+        set(v, "/bases/2/class", json!("ring"));
+        // Out of order on purpose: the list is by id.
+        let bases = v["bases"].as_array_mut().expect("an array");
+        bases.reverse();
+    });
+    let listed = dto::bases(&spec::build(value).expect("good content"));
+    assert_eq!(
+        listed
+            .iter()
+            .map(|b| (b.id, b.name.as_str(), b.class.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            (1, "Short Sword", Some("weapon")),
+            (2, "Round Shield", None),
+            (3, "Iron Ring", Some("ring")),
+        ]
+    );
+    let json = serde_json::to_value(&listed[0]).expect("serializes");
+    assert_eq!(
+        json,
+        json!({ "id": 1, "name": "Short Sword", "class": "weapon" })
+    );
+}
+
+#[test]
+fn a_spec_may_leave_the_class_out_and_a_class_must_be_a_key() {
+    let plain = dto::bases(&catalog());
+    assert!(plain.iter().all(|b| b.class.is_none()));
+
+    let found = first_issue(|v| set(v, "/bases/1/class", json!("Not A Class")));
+    assert_eq!(pair(&found), (ErrorCode::InvalidKey, "bases[1].class"));
+    let found = first_issue(|v| set(v, "/bases/2/class", json!("")));
+    assert_eq!(pair(&found), (ErrorCode::InvalidKey, "bases[2].class"));
+    let found = first_issue(|v| set(v, "/bases/0/class", json!(3)));
+    assert_eq!(pair(&found), (ErrorCode::InvalidShape, "bases[0].class"));
+}
+
+#[test]
+fn the_new_core_errors_map_to_their_codes() {
+    use enzan_core::catalog::{EvaluateSheetError, ItemError};
+    use enzan_core::sheet::SourceId;
+
+    let source_id = SourceId::try_from("level").expect("a key");
+    assert_eq!(
+        EvaluateSheetError::UnknownStat { key_index: 0 }.code(),
+        ErrorCode::UnknownStat
+    );
+    assert_eq!(
+        EvaluateSheetError::UnknownModifierStat {
+            source_id,
+            index: 0
+        }
+        .code(),
+        ErrorCode::UnknownStat
+    );
+    assert_eq!(
+        EvaluateSheetError::Overflow { key_index: 0 }.code(),
+        ErrorCode::Overflow
+    );
+    for (error, code) in [
+        (ItemError::UnknownBase, ErrorCode::UnknownBase),
+        (ItemError::UnknownRarity, ErrorCode::UnknownRarity),
+        (
+            ItemError::UnknownAffix { index: 0 },
+            ErrorCode::UnknownAffix,
+        ),
+        (ItemError::NotAdmitted { index: 0 }, ErrorCode::InvalidItem),
+        (ItemError::OutOfRange { index: 0 }, ErrorCode::InvalidItem),
+        (ItemError::TooManyAffixes, ErrorCode::InvalidItem),
+    ] {
+        assert_eq!(error.code(), code, "{error:?}");
+    }
+}
+
+#[test]
+fn a_sheet_overflow_is_refused_at_its_stat() {
+    let big = ModifierInput {
+        stat: "damage".to_owned(),
+        modifier: ModifierKind::Added,
+        value: 1e308,
+    };
+    let source = |id: &str| SourceInput {
+        id: id.to_owned(),
+        from: SourceFrom::Modifiers(vec![big.clone()]),
+    };
+    let found = EvaluateSheetArgs {
+        sources: vec![source("a"), source("b")],
+        stats: vec!["life".to_owned(), "damage".to_owned()],
+    }
+    .run(&catalog())
+    .expect_err("overflow");
+    assert_eq!(pair(&found), (ErrorCode::Overflow, "stats[1]"));
 }
